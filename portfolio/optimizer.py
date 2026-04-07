@@ -1,21 +1,21 @@
 """
-Modified NSGA-II optimizer for portfolio optimization (Lou 2023).
+Modified NSGA-II for portfolio optimization (Lou 2023).
 
-Extends the base NSGA-II with three modifications from:
-    Lou (2023), "Multi-Objective Portfolio Optimization with Modified NSGA-II",
-    IEEE ICDSCA 2023.
+Implements three modifications from:
+    Lou, "Optimizing Portfolios with Modified NSGA-II Solutions",
+    IEEE ICDSCA 2023, pp. 375-380.
 
-Modifications:
-    1. Smart Initialization - mix of equal-weight, concentrated, sparse,
-       and random portfolios instead of purely random.
-    2. Adaptive Mutation - dynamically adjust mutation strength based on
-       population diversity to prevent premature convergence.
-    3. Refined Selection - enhanced tournament selection with objective
-       spread as an additional tie-breaking criterion.
+1. Refined Selection (Section III-A):
+   Bias tournament candidate selection toward less crowded solutions.
+   P(i) = c(i)^b / sum(c(j)^b), where b is a bias parameter.
 
-The base PortfolioNSGA2Utils also reimplements genetic operators to handle
-portfolio weight constraints (non-negative, sum to 1) since the parent
-class uses name-mangled private methods that cannot be overridden.
+2. Dynamic Mutation (Section III-B):
+   As the Pareto front gets denser, increase mutation probability
+   and sigma to promote exploration. Decay both over generations.
+
+3. Optimized Initialization (Section III-C):
+   Start with a large population for one generation, then select
+   down to standard size using non-dominated sorting + crowding distance.
 """
 
 import random
@@ -27,221 +27,203 @@ from tqdm import tqdm
 
 
 class PortfolioNSGA2Utils(NSGA2Utils):
-    """
-    NSGA-II utilities adapted for portfolio optimization with Lou 2023 mods.
-
-    Args:
-        problem: PortfolioProblem instance.
-        num_of_individuals: Population size.
-        num_of_tour_particips: Tournament size.
-        tournament_prob: Probability of selecting the better individual.
-        crossover_param: SBX distribution index (eta_c).
-        mutation_param: Polynomial mutation distribution index (eta_m).
-        adaptive_mutation: Enable Lou 2023 adaptive mutation.
-        smart_init: Enable Lou 2023 smart initialization.
-        refined_selection: Enable Lou 2023 refined selection.
-    """
+    """NSGA-II utilities with Lou 2023 modifications for portfolio optimization."""
 
     def __init__(self, problem, num_of_individuals=100,
                  num_of_tour_particips=2, tournament_prob=0.9,
                  crossover_param=2, mutation_param=5,
-                 adaptive_mutation=True, smart_init=True,
-                 refined_selection=True):
+                 selection_bias=0.5, init_population_multiplier=10,
+                 base_mutation_prob=0.3, base_mutation_sigma=0.1,
+                 mutation_decay=0.995,
+                 use_lou_selection=True, use_lou_init=True,
+                 use_lou_mutation=True):
         super().__init__(problem, num_of_individuals, num_of_tour_particips,
                          tournament_prob, crossover_param, mutation_param)
-        self.adaptive_mutation = adaptive_mutation
-        self.smart_init = smart_init
-        self.refined_selection = refined_selection
 
-        # Adaptive mutation state
-        self.base_mutation_param = mutation_param
-        self.min_mutation_param = 1
-        self.max_mutation_param = 20
+        # Lou Modification 1: Refined selection
+        self.use_lou_selection = use_lou_selection
+        self.selection_bias = selection_bias  # b parameter (0=standard, 1=strict crowding)
 
-    # Lou 2023 Modification 1: Smart Initialization
+        # Lou Modification 2: Dynamic mutation
+        self.use_lou_mutation = use_lou_mutation
+        self.base_mutation_prob = base_mutation_prob
+        self.base_mutation_sigma = base_mutation_sigma
+        self.mutation_prob = base_mutation_prob
+        self.mutation_sigma = base_mutation_sigma
+        self.mutation_decay = mutation_decay  # per-generation decay
+
+        # Lou Modification 3: Optimized initialization
+        self.use_lou_init = use_lou_init
+        self.init_population_multiplier = init_population_multiplier
+
+    # -- Lou Modification 3: Optimized Initialization (Section III-C) --
+    # Start with large population, run 1 generation of sorting,
+    # then select down to standard size.
+
     def create_initial_population(self):
         """
-        Create initial population with diverse strategies (Lou 2023).
-
-        Instead of purely random portfolios, uses a mix:
-            - 10% equal-weight (with small perturbation)
-            - 20% concentrated (heavy weight in 1 stock)
-            - 20% sparse (5-15 stocks selected)
-            - 50% random
-
-        Falls back to standard random initialization if smart_init=False.
+        Generate a large initial population, evaluate and sort it,
+        then select the best N individuals by rank + crowding distance.
         """
-        if not self.smart_init:
+        if not self.use_lou_init:
             return super().create_initial_population()
 
-        population = Population()
-        n = self.num_of_individuals
-        num_assets = self.problem.num_assets
+        large_size = self.num_of_individuals * self.init_population_multiplier
+        large_pop = Population()
 
-        # Equal-weight portfolios (10%)
-        n_equal = max(1, n // 10)
-        for _ in range(n_equal):
-            individual = Individual()
-            base = 1.0 / num_assets
-            features = [base + random.gauss(0, base * 0.1) for _ in range(num_assets)]
-            features = [max(0.0, f) for f in features]
-            total = sum(features)
-            individual.features = [f / total for f in features]
-            self.problem.calculate_objectives(individual)
-            population.append(individual)
-
-        # Concentrated portfolios (20%)
-        n_concentrated = max(1, n // 5)
-        for _ in range(n_concentrated):
-            individual = Individual()
-            features = [0.0] * num_assets
-            # Pick 1-3 focus stocks with 30-60% total weight
-            n_focus = random.randint(1, 3)
-            focus_idxs = random.sample(range(num_assets), n_focus)
-            focus_weight = random.uniform(0.3, 0.6)
-            for idx in focus_idxs:
-                features[idx] = focus_weight / n_focus
-            # Distribute remaining weight randomly
-            remaining = 1.0 - focus_weight
-            for i in range(num_assets):
-                if i not in focus_idxs:
-                    features[i] = random.random()
-            # Normalize non-focus to fill remaining weight
-            non_focus_total = sum(features[i] for i in range(num_assets) if i not in focus_idxs)
-            if non_focus_total > 0:
-                for i in range(num_assets):
-                    if i not in focus_idxs:
-                        features[i] = features[i] / non_focus_total * remaining
-            individual.features = features
-            self.problem.calculate_objectives(individual)
-            population.append(individual)
-
-        # Sparse portfolios (20%)
-        n_sparse = max(1, n // 5)
-        for _ in range(n_sparse):
-            individual = Individual()
-            k = random.randint(5, min(15, num_assets))
-            selected = random.sample(range(num_assets), k)
-            features = [0.0] * num_assets
-            for idx in selected:
-                features[idx] = random.random()
-            total = sum(features)
-            individual.features = [f / total for f in features]
-            self.problem.calculate_objectives(individual)
-            population.append(individual)
-
-        # Random portfolios (remaining)
-        n_random = n - n_equal - n_concentrated - n_sparse
-        for _ in range(n_random):
+        for _ in range(large_size):
             individual = self.problem.generate_individual()
             self.problem.calculate_objectives(individual)
-            population.append(individual)
+            large_pop.append(individual)
 
-        return population
+        # Sort and compute crowding distances on the large population
+        self.fast_nondominated_sort(large_pop)
+        for front in large_pop.fronts:
+            self.calculate_crowding_distance(front)
 
-    # Lou 2023 Modification 2: Adaptive Mutation
+        # Select best N individuals by front rank, then crowding distance
+        selected = Population()
+        front_num = 0
+        while (front_num < len(large_pop.fronts)
+               and len(large_pop.fronts[front_num]) > 0
+               and len(selected) + len(large_pop.fronts[front_num]) <= self.num_of_individuals):
+            selected.extend(large_pop.fronts[front_num])
+            front_num += 1
 
-    def compute_population_diversity(self, population):
+        # Fill remaining from the next partial front
+        if len(selected) < self.num_of_individuals and front_num < len(large_pop.fronts):
+            remaining_front = large_pop.fronts[front_num]
+            remaining_front.sort(key=lambda ind: ind.crowding_distance, reverse=True)
+            remaining = self.num_of_individuals - len(selected)
+            selected.extend(remaining_front[:remaining])
+
+        return selected
+
+    # -- Lou Modification 2: Dynamic Mutation (Section III-B) --
+    # As the Pareto front gets denser, increase mutation probability and sigma.
+    # Apply decay over generations so convergence still happens.
+
+    def compute_front_density(self, population):
         """
-        Compute diversity as average pairwise Euclidean distance in
-        objective space. Higher = more diverse population.
-
-        This is O(N^2) in population size - intentionally pure Python
-        for the baseline (will be optimized later with NumPy/Numba).
+        Compute density of the first Pareto front.
+        Density = number of front-0 individuals / total population.
+        Higher density means more solutions are converging to the front.
         """
-        individuals = list(population)
-        n = len(individuals)
-        if n <= 1:
+        if not population.fronts or len(population.fronts[0]) == 0:
             return 0.0
+        return len(population.fronts[0]) / len(population)
 
-        total_dist = 0.0
-        count = 0
-        for i in range(n):
-            for j in range(i + 1, n):
-                dist_sq = 0.0
-                for a, b in zip(individuals[i].objectives, individuals[j].objectives):
-                    dist_sq += (a - b) ** 2
-                total_dist += math.sqrt(dist_sq)
-                count += 1
-
-        return total_dist / count
-
-    def adapt_mutation_param(self, diversity, initial_diversity):
+    def update_dynamic_mutation(self, generation, front_density):
         """
-        Adjust mutation distribution index based on population diversity.
-
-        Low diversity  -> decrease eta_m -> stronger mutation (explore)
-        High diversity -> increase eta_m -> weaker mutation (exploit)
-
-        The mutation_param (eta_m) controls the spread of polynomial
-        mutation: lower eta_m = more spread = more exploration.
+        Adjust mutation probability and sigma based on front density.
+        Denser front -> higher mutation prob and sigma (explore more).
+        Apply decay over generations to allow eventual convergence.
         """
-        if not self.adaptive_mutation or initial_diversity < 1e-12:
-            return self.mutation_param
+        if not self.use_lou_mutation:
+            return
 
-        ratio = diversity / initial_diversity
+        # Scale mutation by front density (denser = more mutation)
+        density_factor = 1.0 + front_density
 
-        if ratio < 0.3:
-            # case when converges too fast so increase mutation strength
-            self.mutation_param = max(
-                self.min_mutation_param,
-                self.base_mutation_param * ratio
-            )
-        elif ratio > 0.7:
-            # good spread, weaker mutation
-            self.mutation_param = min(
-                self.max_mutation_param,
-                self.base_mutation_param / max(ratio, 0.01)
-            )
+        # Apply generation decay
+        decay = self.mutation_decay ** generation
+
+        self.mutation_prob = self.base_mutation_prob * density_factor * decay
+        self.mutation_sigma = self.base_mutation_sigma * density_factor * decay
+
+        # Clamp to reasonable bounds
+        self.mutation_prob = min(1.0, max(0.01, self.mutation_prob))
+        self.mutation_sigma = min(0.5, max(0.001, self.mutation_sigma))
+
+    # -- Lou Modification 1: Refined Selection (Section III-A) --
+    # P(i) = c(i)^b / sum(c(j)^b)
+    # Bias tournament candidate selection toward less crowded solutions.
+
+    def _tournament(self, population):
+        """
+        Tournament selection with crowding-distance-biased candidate sampling.
+        Instead of uniform random selection of candidates, probability of
+        being selected is proportional to crowding_distance^b.
+        """
+        if not self.use_lou_selection or self.selection_bias == 0:
+            # Standard uniform random tournament
+            participants = random.sample(population.population, self.num_of_tour_particips)
         else:
-            # else base param
-            self.mutation_param = self.base_mutation_param
+            # Lou's biased selection: P(i) = c(i)^b / sum(c(j)^b)
+            participants = self._biased_sample(population, self.num_of_tour_particips)
 
-        return self.mutation_param
+        # Tournament comparison: rank first, then crowding distance
+        best = None
+        for participant in participants:
+            if best is None or self._tournament_compare(participant, best) == 1:
+                best = participant
+        return best
 
-    # Lou 2023 Modification 3: Refined Selection
-    def crowding_operator(self, individual, other_individual):
+    def _biased_sample(self, population, k):
+        """Sample k individuals with probability proportional to crowding_distance^b."""
+        individuals = population.population
+        b = self.selection_bias
+
+        # Compute selection probabilities
+        weights = []
+        for ind in individuals:
+            cd = ind.crowding_distance if ind.crowding_distance is not None else 0.0
+            # Cap infinity values for numerical stability
+            cd = min(cd, 1e6)
+            weights.append(cd ** b)
+
+        total = sum(weights)
+        if total == 0:
+            return random.sample(individuals, k)
+
+        probs = [w / total for w in weights]
+
+        # Weighted sampling without replacement
+        selected = []
+        remaining_indices = list(range(len(individuals)))
+        remaining_probs = list(probs)
+
+        for _ in range(min(k, len(individuals))):
+            prob_sum = sum(remaining_probs)
+            if prob_sum == 0:
+                idx_in_remaining = random.randint(0, len(remaining_indices) - 1)
+            else:
+                r = random.random() * prob_sum
+                cumulative = 0.0
+                idx_in_remaining = 0
+                for j, p in enumerate(remaining_probs):
+                    cumulative += p
+                    if cumulative >= r:
+                        idx_in_remaining = j
+                        break
+
+            selected.append(individuals[remaining_indices[idx_in_remaining]])
+            remaining_indices.pop(idx_in_remaining)
+            remaining_probs.pop(idx_in_remaining)
+
+        return selected
+
+    def _tournament_compare(self, ind1, ind2):
         """
-        Enhanced crowding comparison operator (Lou 2023).
-
-        Standard NSGA-II: compare by rank, then crowding distance.
-        Lou 2023 adds: when rank and crowding distance tie, prefer the
-        solution with greater spread across objectives (better tradeoff
-        representation).
+        Lou's tournament comparison (from paper's T(i,j) formula):
+        Prefer lower rank, or same rank with higher crowding distance.
         """
-        if not self.refined_selection:
-            return super().crowding_operator(individual, other_individual)
-
-        # lower rank better
-        if individual.rank < other_individual.rank:
+        if ind1.rank < ind2.rank:
             return 1
-        if individual.rank > other_individual.rank:
+        if ind1.rank > ind2.rank:
             return -1
-
-        # crowding distance higher better
-        if individual.crowding_distance > other_individual.crowding_distance:
+        if (ind1.crowding_distance or 0) > (ind2.crowding_distance or 0):
             return 1
-        if individual.crowding_distance < other_individual.crowding_distance:
+        if (ind1.crowding_distance or 0) < (ind2.crowding_distance or 0):
             return -1
-
-        # objective spread higher better
-        if individual.objectives and other_individual.objectives:
-            spread1 = max(individual.objectives) - min(individual.objectives)
-            spread2 = max(other_individual.objectives) - min(other_individual.objectives)
-            if spread1 > spread2:
-                return 1
-            if spread1 < spread2:
-                return -1
-
         return 1
 
-    # Portfolio-adapted genetic operators
-    # The base NSGA2Utils uses __double_underscore (name-mangled) methods
-    # for crossover, mutation, and tournament, so we must reimplement
-    # create_children entirely rather than just overriding the operators.
+    # -- Portfolio-adapted genetic operators --
+    # Base NSGA2Utils uses __double_underscore (name-mangled) methods,
+    # so we reimplement create_children and its helpers.
 
     def create_children(self, population):
-        """Create offspring with portfolio constraint enforcement."""
+        """Create offspring with Lou's dynamic mutation and portfolio constraints."""
         children = []
         while len(children) < len(population):
             parent1 = self._tournament(population)
@@ -253,26 +235,14 @@ class PortfolioNSGA2Utils(NSGA2Utils):
             child1, child2 = self._crossover(parent1, parent2)
             self._mutate(child1)
             self._mutate(child2)
-            # calculate_objectives includes weight repair (sum to 1)
             self.problem.calculate_objectives(child1)
             self.problem.calculate_objectives(child2)
             children.append(child1)
             children.append(child2)
         return children
 
-    def _tournament(self, population):
-        """Binary tournament selection."""
-        participants = random.sample(population.population, self.num_of_tour_particips)
-        best = None
-        for participant in participants:
-            if best is None or (
-                    self.crowding_operator(participant, best) == 1
-                    and random.random() <= self.tournament_prob):
-                best = participant
-        return best
-
     def _crossover(self, parent1, parent2):
-        """Simulated Binary Crossover (SBX) for portfolio weights."""
+        """Simulated Binary Crossover (SBX)."""
         child1 = Individual()
         child2 = Individual()
         n = self.problem.num_assets
@@ -289,7 +259,6 @@ class PortfolioNSGA2Utils(NSGA2Utils):
         return child1, child2
 
     def _get_beta(self):
-        """Generate beta parameter for SBX crossover."""
         u = random.random()
         eta = self.crossover_param
         if u <= 0.5:
@@ -297,84 +266,82 @@ class PortfolioNSGA2Utils(NSGA2Utils):
         return (2 * (1 - u)) ** (-1 / (eta + 1))
 
     def _mutate(self, child):
-        """Polynomial mutation for portfolio weights."""
+        """
+        Mutation with Lou's dynamic probability and sigma.
+        Each gene mutates with probability mutation_prob,
+        perturbed by Gaussian noise with std = mutation_sigma.
+        """
         n = self.problem.num_assets
-        for gene in range(n):
-            u = random.random()
-            eta = self.mutation_param
-
-            if u < 0.5:
-                delta = (2 * u) ** (1 / (eta + 1)) - 1
-            else:
-                delta = 1 - (2 * (1 - u)) ** (1 / (eta + 1))
-
-            lower = self.problem.variables_range[gene][0]
-            upper = self.problem.variables_range[gene][1]
-
-            if u < 0.5:
-                child.features[gene] += delta * (child.features[gene] - lower)
-            else:
-                child.features[gene] += delta * (upper - child.features[gene])
-
-            child.features[gene] = max(lower, min(upper, child.features[gene]))
+        if self.use_lou_mutation:
+            for gene in range(n):
+                if random.random() < self.mutation_prob:
+                    child.features[gene] += random.gauss(0, self.mutation_sigma)
+                    lower = self.problem.variables_range[gene][0]
+                    upper = self.problem.variables_range[gene][1]
+                    child.features[gene] = max(lower, min(upper, child.features[gene]))
+        else:
+            # Standard polynomial mutation
+            for gene in range(n):
+                u = random.random()
+                eta = self.mutation_param
+                if u < 0.5:
+                    delta = (2 * u) ** (1 / (eta + 1)) - 1
+                else:
+                    delta = 1 - (2 * (1 - u)) ** (1 / (eta + 1))
+                lower = self.problem.variables_range[gene][0]
+                upper = self.problem.variables_range[gene][1]
+                if u < 0.5:
+                    child.features[gene] += delta * (child.features[gene] - lower)
+                else:
+                    child.features[gene] += delta * (upper - child.features[gene])
+                child.features[gene] = max(lower, min(upper, child.features[gene]))
 
 
 class PortfolioEvolution:
     """
-    Modified NSGA-II evolution loop for portfolio optimization.
+    Modified NSGA-II evolution with Lou 2023 modifications.
 
-    Integrates Lou 2023 adaptive mutation into the generation loop:
-    after each generation, measures population diversity and adjusts
-    the mutation distribution index accordingly.
-
-    Args:
-        problem: PortfolioProblem instance.
-        num_of_generations: Number of evolutionary generations.
-        num_of_individuals: Population size.
-        num_of_tour_particips: Tournament size.
-        tournament_prob: Tournament selection probability.
-        crossover_param: SBX distribution index.
-        mutation_param: Polynomial mutation distribution index.
-        adaptive_mutation: Enable adaptive mutation (Lou 2023).
-        smart_init: Enable smart initialization (Lou 2023).
-        refined_selection: Enable refined selection (Lou 2023).
+    Lou's paper tests three configurations:
+    1. Standard NSGA-II (baseline)
+    2. NSGA-II + refined selection
+    3. NSGA-II + refined selection + dynamic mutation + optimized init (fully optimized)
     """
 
     def __init__(self, problem, num_of_generations=200, num_of_individuals=100,
                  num_of_tour_particips=2, tournament_prob=0.9,
                  crossover_param=2, mutation_param=5,
-                 adaptive_mutation=True, smart_init=True,
-                 refined_selection=True):
+                 selection_bias=0.5, init_population_multiplier=10,
+                 base_mutation_prob=0.3, base_mutation_sigma=0.1,
+                 mutation_decay=0.995,
+                 use_lou_selection=True, use_lou_init=True,
+                 use_lou_mutation=True):
         self.utils = PortfolioNSGA2Utils(
             problem, num_of_individuals, num_of_tour_particips,
             tournament_prob, crossover_param, mutation_param,
-            adaptive_mutation=adaptive_mutation,
-            smart_init=smart_init,
-            refined_selection=refined_selection,
+            selection_bias=selection_bias,
+            init_population_multiplier=init_population_multiplier,
+            base_mutation_prob=base_mutation_prob,
+            base_mutation_sigma=base_mutation_sigma,
+            mutation_decay=mutation_decay,
+            use_lou_selection=use_lou_selection,
+            use_lou_init=use_lou_init,
+            use_lou_mutation=use_lou_mutation,
         )
         self.population = None
         self.num_of_generations = num_of_generations
         self.num_of_individuals = num_of_individuals
 
     def evolve(self):
-        """
-        Run the modified NSGA-II evolution loop.
-
-        Returns:
-            List of Individual objects on the final Pareto front (front 0).
-        """
-        # Initialize population (smart init if enabled)
+        """Run the modified NSGA-II evolution loop. Returns Pareto front."""
+        # Optimized initialization (Lou Mod 3)
         self.population = self.utils.create_initial_population()
         self.utils.fast_nondominated_sort(self.population)
         for front in self.population.fronts:
             self.utils.calculate_crowding_distance(front)
         children = self.utils.create_children(self.population)
 
-        # Baseline diversity for adaptive mutation
-        initial_diversity = self.utils.compute_population_diversity(self.population)
-
         returned_population = None
-        for i in tqdm(range(self.num_of_generations), desc="NSGA-II"):
+        for gen in tqdm(range(self.num_of_generations), desc="NSGA-II"):
             # Merge parents + children (2N)
             self.population.extend(children)
             self.utils.fast_nondominated_sort(self.population)
@@ -388,7 +355,6 @@ class PortfolioEvolution:
                 new_population.extend(self.population.fronts[front_num])
                 front_num += 1
 
-            # Partial front: take individuals with highest crowding distance
             self.utils.calculate_crowding_distance(self.population.fronts[front_num])
             self.population.fronts[front_num].sort(
                 key=lambda ind: ind.crowding_distance, reverse=True
@@ -399,13 +365,11 @@ class PortfolioEvolution:
             returned_population = self.population
             self.population = new_population
 
-            # Lou 2023: Adapt mutation based on current diversity
-            if self.utils.adaptive_mutation:
-                diversity = self.utils.compute_population_diversity(self.population)
-                self.utils.adapt_mutation_param(diversity, initial_diversity)
-
-            # Prepare next generation
+            # Dynamic mutation update (Lou Mod 2)
             self.utils.fast_nondominated_sort(self.population)
+            front_density = self.utils.compute_front_density(self.population)
+            self.utils.update_dynamic_mutation(gen, front_density)
+
             for front in self.population.fronts:
                 self.utils.calculate_crowding_distance(front)
             children = self.utils.create_children(self.population)
