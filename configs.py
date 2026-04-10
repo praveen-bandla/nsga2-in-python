@@ -46,6 +46,26 @@ COVARIANCE_MONTHLY_FILENAME = "covariance_monthly.parquet"
 BENCHMARK_SPY_FILENAME = "benchmark_spy.parquet"
 
 
+# -----------------------------
+# Backtesting / extractor (v1)
+# -----------------------------
+# These defaults are used by data_pipeline/data_extractor.py.
+# They keep I/O + missing-value policy consistent across backtests.
+
+# Processed inputs
+EXTRACTOR_RETURNS_FILENAME = RETURNS_DAILY_FILENAME
+EXTRACTOR_PRICES_FILENAME = PRICES_ADJ_CLOSE_FILENAME
+
+# Missing-data handling
+# - Returns: fill missing values with 0.0 (neutral return)
+# - Prices: forward-fill then back-fill to get a valid price vector each day
+EXTRACTOR_RETURNS_FILL_VALUE = 0.0
+EXTRACTOR_PRICES_FILL_METHOD = "ffill_bfill"  # supported: "ffill_bfill"
+
+# Ticker ordering
+EXTRACTOR_SORT_TICKERS = True
+
+
 # Computation parameters
 TRADING_DAYS_PER_YEAR = 252
 MONTHS_PER_YEAR = 12
