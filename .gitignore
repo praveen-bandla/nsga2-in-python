@@ -1,15 +1,28 @@
-.idea/
-build/
-nsga2.egg-info/
-nsga_2.egg-info/
-dist/
+# Byte-compiled
 __pycache__/
 
-# Virtual environments
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Packaging
+.idea/
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Environments
+.env
+.venv
 env/
 venv/
-.env/
-.venv/
 
 # Data files
 .parquet
+
+# Cython debug symbols
+cython_debug/
