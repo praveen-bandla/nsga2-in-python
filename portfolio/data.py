@@ -1,0 +1,45 @@
+"""
+Data infrastructure for portfolio optimization.
+Loads pre-computed data from the data pipeline (data/processed/).
+Run the pipeline first: python data_pipeline/data_loader.py
+"""
+
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+import configs
+
+
+def load_from_pipeline():
+    """
+    Load returns, covariance, and std devs from the data pipeline output.
+    Expects parquet files in data/processed/.
+    """
+    proc = Path(configs.PROC_DIR)
+    returns_path = proc / configs.RETURNS_DAILY_FILENAME
+
+    if not returns_path.exists():
+        raise FileNotFoundError(
+            f"Data not found at {returns_path}. "
+            "Run the pipeline first: python data_pipeline/data_loader.py"
+        )
+
+    returns_df = pd.read_parquet(returns_path)
+    returns_df = returns_df.dropna(axis=1, how='any')
+
+    # Compute daily statistics directly from returns (consistent units).
+    # The pipeline's covariance is annualized (daily * 252) which would
+    # create a mismatch with daily mean_returns and std_returns.
+    mean_returns = returns_df.mean().values
+    cov_matrix = returns_df.cov().values
+    std_returns = returns_df.std().values
+    ticker_names = list(returns_df.columns)
+
+    print(f"Loaded {len(ticker_names)} stocks, {len(returns_df)} trading days")
+    return mean_returns, cov_matrix, std_returns, ticker_names
