@@ -20,10 +20,13 @@ Implements three modifications from:
 
 import random
 import math
+import numpy as np
 from nsga2.utils import NSGA2Utils
 from nsga2.population import Population
 from nsga2.individual import Individual
 from tqdm import tqdm
+from portfolio.cython_ops import fast_nondominated_sort_cy
+from portfolio.numba_ops import sbx_crossover_jit, gaussian_mutate_jit
 
 
 class PortfolioNSGA2Utils(NSGA2Utils):
@@ -55,6 +58,33 @@ class PortfolioNSGA2Utils(NSGA2Utils):
         # Lou Modification 3: Optimized initialization
         self.use_lou_init = use_lou_init
         self.init_population_multiplier = init_population_multiplier
+
+    # -- Cython-accelerated non-dominated sorting --
+
+    def fast_nondominated_sort(self, population):
+        """Non-dominated sorting using Cython-compiled C extension."""
+        individuals = population.population
+        n = len(individuals)
+        if n == 0:
+            population.fronts = [[]]
+            return
+
+        m = len(individuals[0].objectives)
+        objectives = np.empty((n, m), dtype=np.float64)
+        for i, ind in enumerate(individuals):
+            for j in range(m):
+                objectives[i, j] = ind.objectives[j]
+
+        ranks = fast_nondominated_sort_cy(objectives)
+
+        max_rank = int(ranks.max())
+        population.fronts = [[] for _ in range(max_rank + 2)]
+        for i, ind in enumerate(individuals):
+            ind.rank = int(ranks[i])
+            ind.domination_count = 0
+            ind.dominated_solutions = []
+            population.fronts[ind.rank].append(ind)
+        population.fronts.append([])
 
     # -- Lou Modification 3: Optimized Initialization (Section III-C) --
     # Start with large population, run 1 generation of sorting,
@@ -242,59 +272,21 @@ class PortfolioNSGA2Utils(NSGA2Utils):
         return children
 
     def _crossover(self, parent1, parent2):
-        """Simulated Binary Crossover (SBX)."""
+        """SBX crossover using Numba JIT."""
+        p1 = np.array(parent1.features, dtype=np.float64)
+        p2 = np.array(parent2.features, dtype=np.float64)
+        c1_arr, c2_arr = sbx_crossover_jit(p1, p2, float(self.crossover_param))
         child1 = Individual()
         child2 = Individual()
-        n = self.problem.num_assets
-        child1.features = [0.0] * n
-        child2.features = [0.0] * n
-
-        for i in range(n):
-            beta = self._get_beta()
-            midpoint = (parent1.features[i] + parent2.features[i]) / 2
-            spread = abs(parent1.features[i] - parent2.features[i]) / 2
-            child1.features[i] = midpoint + beta * spread
-            child2.features[i] = midpoint - beta * spread
-
+        child1.features = c1_arr.tolist()
+        child2.features = c2_arr.tolist()
         return child1, child2
 
-    def _get_beta(self):
-        u = random.random()
-        eta = self.crossover_param
-        if u <= 0.5:
-            return (2 * u) ** (1 / (eta + 1))
-        return (2 * (1 - u)) ** (-1 / (eta + 1))
-
     def _mutate(self, child):
-        """
-        Mutation with Lou's dynamic probability and sigma.
-        Each gene mutates with probability mutation_prob,
-        perturbed by Gaussian noise with std = mutation_sigma.
-        """
-        n = self.problem.num_assets
-        if self.use_lou_mutation:
-            for gene in range(n):
-                if random.random() < self.mutation_prob:
-                    child.features[gene] += random.gauss(0, self.mutation_sigma)
-                    lower = self.problem.variables_range[gene][0]
-                    upper = self.problem.variables_range[gene][1]
-                    child.features[gene] = max(lower, min(upper, child.features[gene]))
-        else:
-            # Standard polynomial mutation
-            for gene in range(n):
-                u = random.random()
-                eta = self.mutation_param
-                if u < 0.5:
-                    delta = (2 * u) ** (1 / (eta + 1)) - 1
-                else:
-                    delta = 1 - (2 * (1 - u)) ** (1 / (eta + 1))
-                lower = self.problem.variables_range[gene][0]
-                upper = self.problem.variables_range[gene][1]
-                if u < 0.5:
-                    child.features[gene] += delta * (child.features[gene] - lower)
-                else:
-                    child.features[gene] += delta * (upper - child.features[gene])
-                child.features[gene] = max(lower, min(upper, child.features[gene]))
+        """Gaussian mutation using Numba JIT."""
+        features = np.array(child.features, dtype=np.float64)
+        gaussian_mutate_jit(features, self.mutation_prob, self.mutation_sigma)
+        child.features = features.tolist()
 
 
 class PortfolioEvolution:
