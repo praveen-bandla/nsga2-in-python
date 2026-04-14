@@ -47,7 +47,30 @@ BENCHMARK_SPY_FILENAME = "benchmark_spy.parquet"
 
 
 # -----------------------------
-# Backtesting / extractor (v1)
+# Backtesting artifacts (v1)
+# -----------------------------
+
+# Where to write the frozen portfolio weights CSV
+BACKTESTING_DIR = ROOT_DIR / "backtesting"
+BACKTESTING_WEIGHTS_DIR = BACKTESTING_DIR / "weights"
+BACKTESTING_WEIGHTS_FILENAME = "lou_fixed_portfolio_weights.csv"
+
+# Backtest run parameters (fixed-weights v1)
+BACKTEST_START_DATE = "2020-01-01"
+BACKTEST_END_DATE = "2024-12-31"
+BACKTEST_INITIAL_EQUITY = 1000.0
+
+# Backtest outputs
+BACKTESTING_RESULTS_DIR = BACKTESTING_DIR / "results"
+BACKTESTING_RESULTS_FILENAME = "fixed_lou_vs_spy.csv"
+
+# Reproducibility for the optimizer run that generates the frozen portfolio.
+# Set to None to disable seeding.
+RANDOM_SEED: int | None = 42
+
+
+# -----------------------------
+# Backtesting / extractor (RETIRED)
 # -----------------------------
 # These defaults are used by data_pipeline/data_extractor.py.
 # They keep I/O + missing-value policy consistent across backtests.
