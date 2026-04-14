@@ -22,7 +22,7 @@ env/
 venv/
 
 # Data files
-.parquet
+*.parquet
 
 # Cython debug symbols
 cython_debug/
