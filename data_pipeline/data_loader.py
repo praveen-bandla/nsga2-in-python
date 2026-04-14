@@ -72,6 +72,8 @@ class SP500Pipeline:
             except Exception as e:
                 tqdm.write(f"Batch {i:02d} failed: {e}")
             finally:
+                if i < len(batches) - 1:
+                    time.sleep(self.delay)
                 with lock:
                     pbar.update(1)
 
