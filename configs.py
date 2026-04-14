@@ -46,6 +46,49 @@ COVARIANCE_MONTHLY_FILENAME = "covariance_monthly.parquet"
 BENCHMARK_SPY_FILENAME = "benchmark_spy.parquet"
 
 
+# -----------------------------
+# Backtesting artifacts (v1)
+# -----------------------------
+
+# Where to write the frozen portfolio weights CSV
+BACKTESTING_DIR = ROOT_DIR / "backtesting"
+BACKTESTING_WEIGHTS_DIR = BACKTESTING_DIR / "weights"
+BACKTESTING_WEIGHTS_FILENAME = "lou_fixed_portfolio_weights.csv"
+
+# Backtest run parameters (fixed-weights v1)
+BACKTEST_START_DATE = "2020-01-01"
+BACKTEST_END_DATE = "2024-12-31"
+BACKTEST_INITIAL_EQUITY = 1000.0
+
+# Backtest outputs
+BACKTESTING_RESULTS_DIR = BACKTESTING_DIR / "results"
+BACKTESTING_RESULTS_FILENAME = "fixed_lou_vs_spy.csv"
+
+# Reproducibility for the optimizer run that generates the frozen portfolio.
+# Set to None to disable seeding.
+RANDOM_SEED: int | None = 42
+
+
+# -----------------------------
+# Backtesting / extractor (RETIRED)
+# -----------------------------
+# These defaults are used by data_pipeline/data_extractor.py.
+# They keep I/O + missing-value policy consistent across backtests.
+
+# Processed inputs
+EXTRACTOR_RETURNS_FILENAME = RETURNS_DAILY_FILENAME
+EXTRACTOR_PRICES_FILENAME = PRICES_ADJ_CLOSE_FILENAME
+
+# Missing-data handling
+# - Returns: fill missing values with 0.0 (neutral return)
+# - Prices: forward-fill then back-fill to get a valid price vector each day
+EXTRACTOR_RETURNS_FILL_VALUE = 0.0
+EXTRACTOR_PRICES_FILL_METHOD = "ffill_bfill"  # supported: "ffill_bfill"
+
+# Ticker ordering
+EXTRACTOR_SORT_TICKERS = True
+
+
 # Computation parameters
 TRADING_DAYS_PER_YEAR = 252
 MONTHS_PER_YEAR = 12
