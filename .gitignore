@@ -5,3 +5,4 @@ nsga_2.egg-info/
 dist/
 __pycache__/
 venv
+data/
