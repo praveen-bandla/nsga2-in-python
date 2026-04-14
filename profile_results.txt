@@ -1,0 +1,351 @@
+Timer unit: 1e-09 s
+
+Total time: 1.12861 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/nsga2/utils.py
+Function: fast_nondominated_sort at line 219
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   219                                               def fast_nondominated_sort(self, population):
+   220                                                   """
+   221                                                   Assign front ranks to all individuals using the JIT-compiled dominance kernel.
+   222                                                   Writes individual.rank and rebuilds population.fronts.
+   223                                                   """
+   224       102     237000.0   2323.5      0.0          individuals = list(population)
+   225                                           
+   226                                                   # Extract objectives into a (N, K) array for the JIT kernel
+   227       102    4818000.0  47235.3      0.4          costs = np.array([ind.objectives for ind in individuals], dtype=np.float64)
+   228                                           
+   229       102 1116291000.0 1.09e+07     98.9          ranks = _compute_domination(costs)
+   230                                           
+   231                                                   # Write ranks back and rebuild fronts
+   232       102     515000.0   5049.0      0.0          max_rank = int(ranks.max())
+   233       102     267000.0   2617.6      0.0          population.fronts = [[] for _ in range(max_rank + 1)]
+   234     16202    1670000.0    103.1      0.1          for ind, r in zip(individuals, ranks):
+   235     16100    2285000.0    141.9      0.2              ind.rank = int(r)
+   236     16100    2522000.0    156.6      0.2              population.fronts[r].append(ind)
+
+Total time: 1.17292 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/nsga2/utils.py
+Function: calculate_crowding_distance at line 238
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   238                                               def calculate_crowding_distance(self, front):
+   239                                                   """
+   240                                                   Assign crowding distances to individuals in a single front using the JIT kernel.
+   241                                                   """
+   242       396      68000.0    171.7      0.0          if len(front) == 0:
+   243                                                       return
+   244                                           
+   245                                                   # Extract objectives into (M, K) array
+   246       396    3077000.0   7770.2      0.3          costs = np.array([ind.objectives for ind in front], dtype=np.float64)
+   247                                           
+   248       396 1167118000.0 2.95e+06     99.5          distances = _crowding_distance(costs)
+   249                                           
+   250     11977    1196000.0     99.9      0.1          for ind, d in zip(front, distances):
+   251     11581    1461000.0    126.2      0.1              ind.crowding_distance = float(d)
+
+Total time: 0 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/nsga2/individual.py
+Function: dominates at line 21
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    21                                               def dominates(self, other_individual):
+    22                                                   and_condition = True
+    23                                                   or_condition = False
+    24                                                   for first, second in zip(self.objectives, other_individual.objectives):
+    25                                                       and_condition = and_condition and first <= second
+    26                                                       or_condition = or_condition or first < second
+    27                                                   return (and_condition and or_condition)
+
+Total time: 4.91797 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/optimizer.py
+Function: create_children at line 225
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   225                                               def create_children(self, population):
+   226                                                   """Create offspring with Lou's dynamic mutation and portfolio constraints."""
+   227        51       7000.0    137.3      0.0          children = []
+   228      2601    1734000.0    666.7      0.0          while len(children) < len(population):
+   229      2550  280669000.0 110066.3      5.7              parent1 = self._tournament(population)
+   230      2550     130000.0     51.0      0.0              parent2 = parent1
+   231      2550     185000.0     72.5      0.0              attempts = 0
+   232      5301   22464000.0   4237.7      0.5              while parent1 == parent2 and attempts < 10:
+   233      2751  291950000.0 106125.0      5.9                  parent2 = self._tournament(population)
+   234      2751     262000.0     95.2      0.0                  attempts += 1
+   235      2550 2031913000.0 796828.6     41.3              child1, child2 = self._crossover(parent1, parent2)
+   236      2550  963253000.0 377746.3     19.6              self._mutate(child1)
+   237      2550  956333000.0 375032.5     19.4              self._mutate(child2)
+   238      2550  192291000.0  75408.2      3.9              self.problem.calculate_objectives(child1)
+   239      2550  175630000.0  68874.5      3.6              self.problem.calculate_objectives(child2)
+   240      2550     742000.0    291.0      0.0              children.append(child1)
+   241      2550     401000.0    157.3      0.0              children.append(child2)
+   242        51       7000.0    137.3      0.0          return children
+
+Total time: 0.443924 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/optimizer.py
+Function: _biased_sample at line 162
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   162                                               def _biased_sample(self, population, k):
+   163                                                   """Sample k individuals with probability proportional to crowding_distance^b."""
+   164      5301     682000.0    128.7      0.2          individuals = population.population
+   165      5301     471000.0     88.9      0.1          b = self.selection_bias
+   166                                           
+   167                                                   # Compute selection probabilities
+   168      5301     481000.0     90.7      0.1          weights = []
+   169    535401   34797000.0     65.0      7.8          for ind in individuals:
+   170    530100   60337000.0    113.8     13.6              cd = ind.crowding_distance if ind.crowding_distance is not None else 0.0
+   171                                                       # Cap infinity values for numerical stability
+   172    530100   76349000.0    144.0     17.2              cd = min(cd, 1e6)
+   173    530100   82272000.0    155.2     18.5              weights.append(cd ** b)
+   174                                           
+   175      5301    2769000.0    522.4      0.6          total = sum(weights)
+   176      5301     566000.0    106.8      0.1          if total == 0:
+   177                                                       return random.sample(individuals, k)
+   178                                           
+   179      5301   43495000.0   8205.1      9.8          probs = [w / total for w in weights]
+   180                                           
+   181                                                   # Weighted sampling without replacement
+   182      5301     431000.0     81.3      0.1          selected = []
+   183      5301    3498000.0    659.9      0.8          remaining_indices = list(range(len(individuals)))
+   184      5301    2035000.0    383.9      0.5          remaining_probs = list(probs)
+   185                                           
+   186     15903    2769000.0    174.1      0.6          for _ in range(min(k, len(individuals))):
+   187     10602    4707000.0    444.0      1.1              prob_sum = sum(remaining_probs)
+   188     10602    1169000.0    110.3      0.3              if prob_sum == 0:
+   189                                                           idx_in_remaining = random.randint(0, len(remaining_indices) - 1)
+   190                                                       else:
+   191     10602    1935000.0    182.5      0.4                  r = random.random() * prob_sum
+   192     10602     711000.0     67.1      0.2                  cumulative = 0.0
+   193     10602     597000.0     56.3      0.1                  idx_in_remaining = 0
+   194    491215   37440000.0     76.2      8.4                  for j, p in enumerate(remaining_probs):
+   195    491215   38079000.0     77.5      8.6                      cumulative += p
+   196    491215   41030000.0     83.5      9.2                      if cumulative >= r:
+   197     10602     629000.0     59.3      0.1                          idx_in_remaining = j
+   198     10602     955000.0     90.1      0.2                          break
+   199                                           
+   200     10602    1901000.0    179.3      0.4              selected.append(individuals[remaining_indices[idx_in_remaining]])
+   201     10602    1755000.0    165.5      0.4              remaining_indices.pop(idx_in_remaining)
+   202     10602    1726000.0    162.8      0.4              remaining_probs.pop(idx_in_remaining)
+   203                                           
+   204      5301     338000.0     63.8      0.1          return selected
+
+Total time: 1.66576 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/optimizer.py
+Function: _mutate at line 268
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   268                                               def _mutate(self, child):
+   269                                                   """
+   270                                                   Mutation with Lou's dynamic probability and sigma.
+   271                                                   Each gene mutates with probability mutation_prob,
+   272                                                   perturbed by Gaussian noise with std = mutation_sigma.
+   273                                                   """
+   274      5100     818000.0    160.4      0.0          n = self.problem.num_assets
+   275      5100     390000.0     76.5      0.0          if self.use_lou_mutation:
+   276   2371500  160176000.0     67.5      9.6              for gene in range(n):
+   277   2366400  323854000.0    136.9     19.4                  if random.random() < self.mutation_prob:
+   278    750540  751711000.0   1001.6     45.1                      child.features[gene] += random.gauss(0, self.mutation_sigma)
+   279    750540   88212000.0    117.5      5.3                      lower = self.problem.variables_range[gene][0]
+   280    750540   81628000.0    108.8      4.9                      upper = self.problem.variables_range[gene][1]
+   281    750540  258970000.0    345.0     15.5                      child.features[gene] = max(lower, min(upper, child.features[gene]))
+   282                                                   else:
+   283                                                       # Standard polynomial mutation
+   284                                                       for gene in range(n):
+   285                                                           u = random.random()
+   286                                                           eta = self.mutation_param
+   287                                                           if u < 0.5:
+   288                                                               delta = (2 * u) ** (1 / (eta + 1)) - 1
+   289                                                           else:
+   290                                                               delta = 1 - (2 * (1 - u)) ** (1 / (eta + 1))
+   291                                                           lower = self.problem.variables_range[gene][0]
+   292                                                           upper = self.problem.variables_range[gene][1]
+   293                                                           if u < 0.5:
+   294                                                               child.features[gene] += delta * (child.features[gene] - lower)
+   295                                                           else:
+   296                                                               child.features[gene] += delta * (upper - child.features[gene])
+   297                                                           child.features[gene] = max(lower, min(upper, child.features[gene]))
+
+Total time: 1.82916 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/optimizer.py
+Function: _crossover at line 244
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   244                                               def _crossover(self, parent1, parent2):
+   245                                                   """Simulated Binary Crossover (SBX)."""
+   246      2550    2854000.0   1119.2      0.2          child1 = Individual()
+   247      2550    2247000.0    881.2      0.1          child2 = Individual()
+   248      2550     378000.0    148.2      0.0          n = self.problem.num_assets
+   249      2550     831000.0    325.9      0.0          child1.features = [0.0] * n
+   250      2550     843000.0    330.6      0.0          child2.features = [0.0] * n
+   251                                           
+   252   1185750   82495000.0     69.6      4.5          for i in range(n):
+   253   1183200  655582000.0    554.1     35.8              beta = self._get_beta()
+   254   1183200  328460000.0    277.6     18.0              midpoint = (parent1.features[i] + parent2.features[i]) / 2
+   255   1183200  359686000.0    304.0     19.7              spread = abs(parent1.features[i] - parent2.features[i]) / 2
+   256   1183200  202270000.0    171.0     11.1              child1.features[i] = midpoint + beta * spread
+   257   1183200  193224000.0    163.3     10.6              child2.features[i] = midpoint - beta * spread
+   258                                           
+   259      2550     286000.0    112.2      0.0          return child1, child2
+
+Total time: 0.568519 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/optimizer.py
+Function: _tournament at line 142
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   142                                               def _tournament(self, population):
+   143                                                   """
+   144                                                   Tournament selection with crowding-distance-biased candidate sampling.
+   145                                                   Instead of uniform random selection of candidates, probability of
+   146                                                   being selected is proportional to crowding_distance^b.
+   147                                                   """
+   148      5301    1151000.0    217.1      0.2          if not self.use_lou_selection or self.selection_bias == 0:
+   149                                                       # Standard uniform random tournament
+   150                                                       participants = random.sample(population.population, self.num_of_tour_particips)
+   151                                                   else:
+   152                                                       # Lou's biased selection: P(i) = c(i)^b / sum(c(j)^b)
+   153      5301  560595000.0 105752.7     98.6              participants = self._biased_sample(population, self.num_of_tour_particips)
+   154                                           
+   155                                                   # Tournament comparison: rank first, then crowding distance
+   156      5301     322000.0     60.7      0.1          best = None
+   157     15903    1289000.0     81.1      0.2          for participant in participants:
+   158     10602    4173000.0    393.6      0.7              if best is None or self._tournament_compare(participant, best) == 1:
+   159      8560     639000.0     74.6      0.1                  best = participant
+   160      5301     350000.0     66.0      0.1          return best
+
+Total time: 0.431 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/problem.py
+Function: calculate_objectives at line 64
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    64                                               def calculate_objectives(self, individual):
+    65                                                   """Repair weights then compute all objectives."""
+    66      6100  121721000.0  19954.3     28.2          self.repair_weights(individual)
+    67      6100  309279000.0  50701.5     71.8          individual.objectives = [f(individual.features) for f in self.objectives]
+
+Total time: 0.262688 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/problem.py
+Function: _portfolio_variance_value at line 83
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    83                                               def _portfolio_variance_value(self, weights):
+    84     18300  244095000.0  13338.5     92.9          cov_w = self._mat_vec(self.cov_matrix, weights)
+    85     18300   18593000.0   1016.0      7.1          return self._dot(weights, cov_w)
+
+Total time: 0.110088 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/problem.py
+Function: neg_sharpe_ratio at line 87
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    87                                               def neg_sharpe_ratio(self, weights):
+    88                                                   """Negative Sharpe ratio. Sharpe = (E[r] - r_f) / std(r)."""
+    89      6100    9841000.0   1613.3      8.9          port_return = self._portfolio_return(weights)
+    90      6100   95758000.0  15698.0     87.0          port_var = self._portfolio_variance_value(weights)
+    91      6100    2608000.0    427.5      2.4          port_std = math.sqrt(max(port_var, 0.0))
+    92      6100     641000.0    105.1      0.6          if port_std < 1e-12:
+    93                                                       return 0.0
+    94      6100    1240000.0    203.3      1.1          return -(port_return - self.risk_free_rate) / port_std
+
+Total time: 0.08571 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/problem.py
+Function: portfolio_variance at line 96
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    96                                               def portfolio_variance(self, weights):
+    97                                                   """Portfolio variance: w^T @ Sigma @ w."""
+    98      6100   85710000.0  14050.8    100.0          return self._portfolio_variance_value(weights)
+
+Total time: 0.099554 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/problem.py
+Function: neg_diversification_ratio at line 100
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   100                                               def neg_diversification_ratio(self, weights):
+   101                                                   """Negative diversification ratio. DR = (w . sigma) / sigma_p."""
+   102      6100    6650000.0   1090.2      6.7          weighted_vol = self._dot(weights, self.std_returns)
+   103      6100   89857000.0  14730.7     90.3          port_var = self._portfolio_variance_value(weights)
+   104      6100    1690000.0    277.0      1.7          port_std = math.sqrt(max(port_var, 0.0))
+   105      6100     554000.0     90.8      0.6          if port_std < 1e-12:
+   106                                                       return 0.0
+   107      6100     803000.0    131.6      0.8          return -weighted_vol / port_std
+
+Total time: 0.118124 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/problem.py
+Function: repair_weights at line 52
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    52                                               def repair_weights(self, individual):
+    53                                                   """Clip negatives to zero and normalize to sum to 1."""
+    54      6100   88738000.0  14547.2     75.1          features = np.maximum(0.0, np.array(individual.features))
+    55      6100   10560000.0   1731.1      8.9          total = features.sum()
+    56      6100     886000.0    145.2      0.8          if total == 0:
+    57                                                       features = np.ones(self.num_assets) / self.num_assets
+    58                                                   else:
+    59      6100    4505000.0    738.5      3.8              features = features / total 
+    60      6100   13435000.0   2202.5     11.4          individual.features = features
+
+Total time: 7.41295 s
+File: /Users/alex/Documents/NYU/Classes/DS_1019_Adv_Python/nsga2-in-python/portfolio/optimizer.py
+Function: evolve at line 334
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   334                                               def evolve(self):
+   335                                                   """Run the modified NSGA-II evolution loop. Returns Pareto front."""
+   336                                                   # Optimized initialization (Lou Mod 3)
+   337         1 2428759000.0 2.43e+09     32.8          self.population = self.utils.create_initial_population()
+   338         1     128000.0 128000.0      0.0          self.utils.fast_nondominated_sort(self.population)
+   339         6          0.0      0.0      0.0          for front in self.population.fronts:
+   340         5      75000.0  15000.0      0.0              self.utils.calculate_crowding_distance(front)
+   341         1   96252000.0 9.63e+07      1.3          children = self.utils.create_children(self.population)
+   342                                           
+   343         1          0.0      0.0      0.0          returned_population = None
+   344        51   28356000.0 556000.0      0.4          for gen in tqdm(range(self.num_of_generations), desc="NSGA-II"):
+   345                                                       # Merge parents + children (2N)
+   346        50     194000.0   3880.0      0.0              self.population.extend(children)
+   347        50   17400000.0 348000.0      0.2              self.utils.fast_nondominated_sort(self.population)
+   348                                           
+   349                                                       # Environmental selection: fill new population by front rank
+   350        50      57000.0   1140.0      0.0              new_population = Population()
+   351        50       3000.0     60.0      0.0              front_num = 0
+   352       364     124000.0    340.7      0.0              while (len(new_population) + len(self.population.fronts[front_num])
+   353       182      21000.0    115.4      0.0                     <= self.num_of_individuals):
+   354       132    3479000.0  26356.1      0.0                  self.utils.calculate_crowding_distance(self.population.fronts[front_num])
+   355       132     105000.0    795.5      0.0                  new_population.extend(self.population.fronts[front_num])
+   356       132      19000.0    143.9      0.0                  front_num += 1
+   357                                           
+   358        50    1095000.0  21900.0      0.0              self.utils.calculate_crowding_distance(self.population.fronts[front_num])
+   359       100     329000.0   3290.0      0.0              self.population.fronts[front_num].sort(
+   360        50      16000.0    320.0      0.0                  key=lambda ind: ind.crowding_distance, reverse=True
+   361                                                       )
+   362        50      29000.0    580.0      0.0              remaining = self.num_of_individuals - len(new_population)
+   363        50      73000.0   1460.0      0.0              new_population.extend(self.population.fronts[front_num][:remaining])
+   364                                           
+   365        50    2268000.0  45360.0      0.0              returned_population = self.population
+   366        50      17000.0    340.0      0.0              self.population = new_population
+   367                                           
+   368                                                       # Dynamic mutation update (Lou Mod 2)
+   369        50    6094000.0 121880.0      0.1              self.utils.fast_nondominated_sort(self.population)
+   370        50     113000.0   2260.0      0.0              front_density = self.utils.compute_front_density(self.population)
+   371        50     171000.0   3420.0      0.0              self.utils.update_dynamic_mutation(gen, front_density)
+   372                                           
+   373       230      36000.0    156.5      0.0              for front in self.population.fronts:
+   374       180    3463000.0  19238.9      0.0                  self.utils.calculate_crowding_distance(front)
+   375        50 4824269000.0 9.65e+07     65.1              children = self.utils.create_children(self.population)
+   376                                           
+   377         1          0.0      0.0      0.0          return returned_population.fronts[0]
+

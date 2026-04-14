@@ -1,3 +1,5 @@
+import numpy as np  
+
 class Individual(object):
 
     def __init__(self):
@@ -10,8 +12,11 @@ class Individual(object):
 
     def __eq__(self, other):
         if isinstance(self, other.__class__):
+            if isinstance(self.features, np.ndarray):
+                return np.array_equal(self.features, other.features)
             return self.features == other.features
         return False
+
 
     def dominates(self, other_individual):
         and_condition = True

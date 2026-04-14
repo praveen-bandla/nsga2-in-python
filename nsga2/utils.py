@@ -1,11 +1,201 @@
-from nsga2.population import Population
+import numpy as np
+import numba as nb
 import random
+from nsga2.population import Population
 
+
+@nb.jit(nopython=True)
+def _compute_domination(costs):
+    """
+    Compute non-dominated ranks for a population.
+
+    Parameters
+    ----------
+    costs : np.ndarray, shape (N, K)
+        Objective values for N individuals across K objectives.
+        All objectives are assumed to be minimized.
+
+    Returns
+    -------
+    ranks : np.ndarray, shape (N,), dtype int32
+        Front rank of each individual (0 = Pareto front).
+    """
+    n = costs.shape[0]
+    # how many dominate i
+    domination_count = np.zeros(n, dtype=np.int32)
+    # dominated_by[i] = list of j that i dominates
+    dominated_by = np.zeros((n, n), dtype=np.int32)
+    # number of solutions i dominates
+    dominated_by_count = np.zeros(n, dtype=np.int32) 
+    for i in range(n):
+        for j in range(i + 1, n):
+            i_dom_j = True
+            j_dom_i = True
+            i_strictly_better = False
+            j_strictly_better = False
+
+            for k in range(costs.shape[1]):
+                if costs[i, k] > costs[j, k]:
+                    i_dom_j = False
+                if costs[j, k] > costs[i, k]:
+                    j_dom_i = False
+                if costs[i, k] < costs[j, k]:
+                    i_strictly_better = True
+                if costs[j, k] < costs[i, k]:
+                    j_strictly_better = True
+
+            if i_dom_j and i_strictly_better:
+                dominated_by[i, dominated_by_count[i]] = j
+                dominated_by_count[i] += 1
+                domination_count[j] += 1
+            elif j_dom_i and j_strictly_better:
+                dominated_by[j, dominated_by_count[j]] = i
+                dominated_by_count[j] += 1
+                domination_count[i] += 1
+
+    ranks = np.full(n, -1, dtype=np.int32)
+    current_front = np.where(domination_count == 0)[0]
+    rank = 0
+
+    while len(current_front) > 0:
+        next_front = []
+        for i in current_front:
+            ranks[i] = rank
+            for k in range(dominated_by_count[i]):
+                j = dominated_by[i, k]
+                domination_count[j] -= 1
+                if domination_count[j] == 0:
+                    next_front.append(j)
+        rank += 1
+        current_front = np.array(next_front, dtype=np.int64)
+
+    return ranks
+
+
+@nb.jit(nopython=True)
+def _crowding_distance(costs):
+    """
+    Compute crowding distance for a set of solutions within a single front.
+
+    Parameters
+    ----------
+    costs : np.ndarray, shape (M, K)
+        Objective values for M solutions across K objectives.
+
+    Returns
+    -------
+    distances : np.ndarray, shape (M,), dtype float64
+        Crowding distance for each solution.
+    """
+    m = costs.shape[0]
+    k = costs.shape[1]
+    distances = np.zeros(m, dtype=np.float64)
+
+    if m <= 2:
+        for i in range(m):
+            distances[i] = np.inf
+        return distances
+
+    for obj in range(k):
+        col = costs[:, obj]
+        sort_ids = np.argsort(col)
+
+        distances[sort_ids[0]] = np.inf
+        distances[sort_ids[m - 1]] = np.inf
+
+        obj_min = col[sort_ids[0]]
+        obj_max = col[sort_ids[m - 1]]
+        scale = obj_max - obj_min
+        if scale == 0.0:
+            scale = 1.0
+
+        for i in range(1, m - 1):
+            distances[sort_ids[i]] += (col[sort_ids[i + 1]] - col[sort_ids[i - 1]]) / scale
+
+    return distances
+
+
+@nb.jit(nopython=True)
+def _sbx_crossover(f1, f2, eta):
+    """
+    Simulated Binary Crossover (SBX) on two feature vectors.
+
+    Parameters
+    ----------
+    f1, f2 : np.ndarray, shape (D,)
+        Parent feature vectors.
+    eta : float
+        Distribution index (crossover_param).
+
+    Returns
+    -------
+    c1, c2 : np.ndarray, shape (D,)
+        Offspring feature vectors.
+    """
+    n = f1.shape[0]
+    c1 = np.empty(n, dtype=np.float64)
+    c2 = np.empty(n, dtype=np.float64)
+
+    for i in range(n):
+        u = np.random.random()
+        if u <= 0.5:
+            beta = (2.0 * u) ** (1.0 / (eta + 1.0))
+        else:
+            beta = (2.0 * (1.0 - u)) ** (-1.0 / (eta + 1.0))
+
+        mid = (f1[i] + f2[i]) / 2.0
+        spread = abs(f1[i] - f2[i]) / 2.0
+        c1[i] = mid + beta * spread
+        c2[i] = mid - beta * spread
+
+    return c1, c2
+
+
+@nb.jit(nopython=True)
+def _polynomial_mutation(features, lower, upper, eta):
+    """
+    Polynomial mutation on a feature vector.
+
+    Parameters
+    ----------
+    features : np.ndarray, shape (D,)
+        Individual's feature vector.
+    lower, upper : np.ndarray, shape (D,)
+        Per-gene lower and upper bounds.
+    eta : float
+        Distribution index (mutation_param).
+
+    Returns
+    -------
+    mutated : np.ndarray, shape (D,)
+        Mutated feature vector (clipped to bounds).
+    """
+    n = features.shape[0]
+    mutated = features.copy()
+
+    for i in range(n):
+        u = np.random.random()
+        if u < 0.5:
+            delta = (2.0 * u) ** (1.0 / (eta + 1.0)) - 1.0
+            mutated[i] += delta * (features[i] - lower[i])
+        else:
+            delta = 1.0 - (2.0 * (1.0 - u)) ** (1.0 / (eta + 1.0))
+            mutated[i] += delta * (upper[i] - features[i])
+
+        mutated[i] = max(lower[i], min(upper[i], mutated[i]))
+
+    return mutated
+
+
+# ---------------------------------------------------------------------------
+# NSGA2Utils — class methods are thin wrappers around the JIT kernels
+# ---------------------------------------------------------------------------
 
 class NSGA2Utils:
 
     def __init__(self, problem, num_of_individuals=100,
-                 num_of_tour_particips=2, tournament_prob=0.9, crossover_param=2, mutation_param=5):
+                 num_of_tour_particips=2, tournament_prob=0.9,
+                 crossover_param=2, mutation_param=5):
 
         self.problem = problem
         self.num_of_individuals = num_of_individuals
@@ -13,6 +203,10 @@ class NSGA2Utils:
         self.tournament_prob = tournament_prob
         self.crossover_param = crossover_param
         self.mutation_param = mutation_param
+
+        # Cache bounds arrays for mutation kernel
+        self._lower = np.array([r[0] for r in problem.variables_range], dtype=np.float64)
+        self._upper = np.array([r[1] for r in problem.variables_range], dtype=np.float64)
 
     def create_initial_population(self):
         population = Population()
@@ -23,45 +217,38 @@ class NSGA2Utils:
         return population
 
     def fast_nondominated_sort(self, population):
-        population.fronts = [[]]
-        for individual in population:
-            individual.domination_count = 0
-            individual.dominated_solutions = []
-            for other_individual in population:
-                if individual.dominates(other_individual):
-                    individual.dominated_solutions.append(other_individual)
-                elif other_individual.dominates(individual):
-                    individual.domination_count += 1
-            if individual.domination_count == 0:
-                individual.rank = 0
-                population.fronts[0].append(individual)
-        i = 0
-        while len(population.fronts[i]) > 0:
-            temp = []
-            for individual in population.fronts[i]:
-                for other_individual in individual.dominated_solutions:
-                    other_individual.domination_count -= 1
-                    if other_individual.domination_count == 0:
-                        other_individual.rank = i + 1
-                        temp.append(other_individual)
-            i = i + 1
-            population.fronts.append(temp)
+        """
+        Assign front ranks to all individuals using the JIT-compiled dominance kernel.
+        Writes individual.rank and rebuilds population.fronts.
+        """
+        individuals = list(population)
+
+        # Extract objectives into a (N, K) array for the JIT kernel
+        costs = np.array([ind.objectives for ind in individuals], dtype=np.float64)
+
+        ranks = _compute_domination(costs)
+
+        # Write ranks back and rebuild fronts
+        max_rank = int(ranks.max())
+        population.fronts = [[] for _ in range(max_rank + 1)]
+        for ind, r in zip(individuals, ranks):
+            ind.rank = int(r)
+            population.fronts[r].append(ind)
 
     def calculate_crowding_distance(self, front):
-        if len(front) > 0:
-            solutions_num = len(front)
-            for individual in front:
-                individual.crowding_distance = 0
+        """
+        Assign crowding distances to individuals in a single front using the JIT kernel.
+        """
+        if len(front) == 0:
+            return
 
-            for m in range(len(front[0].objectives)):
-                front.sort(key=lambda individual: individual.objectives[m])
-                front[0].crowding_distance = 10 ** 9
-                front[solutions_num - 1].crowding_distance = 10 ** 9
-                m_values = [individual.objectives[m] for individual in front]
-                scale = max(m_values) - min(m_values)
-                if scale == 0: scale = 1
-                for i in range(1, solutions_num - 1):
-                    front[i].crowding_distance += (front[i + 1].objectives[m] - front[i - 1].objectives[m]) / scale
+        # Extract objectives into (M, K) array
+        costs = np.array([ind.objectives for ind in front], dtype=np.float64)
+
+        distances = _crowding_distance(costs)
+
+        for ind, d in zip(front, distances):
+            ind.crowding_distance = float(d)
 
     def crowding_operator(self, individual, other_individual):
         if (individual.rank < other_individual.rank) or \
@@ -85,46 +272,26 @@ class NSGA2Utils:
             self.problem.calculate_objectives(child2)
             children.append(child1)
             children.append(child2)
-
         return children
 
     def __crossover(self, individual1, individual2):
         child1 = self.problem.generate_individual()
         child2 = self.problem.generate_individual()
-        num_of_features = len(child1.features)
-        genes_indexes = range(num_of_features)
-        for i in genes_indexes:
-            beta = self.__get_beta()
-            x1 = (individual1.features[i] + individual2.features[i]) / 2
-            x2 = abs((individual1.features[i] - individual2.features[i]) / 2)
-            child1.features[i] = x1 + beta * x2
-            child2.features[i] = x1 - beta * x2
+
+        f1 = np.array(individual1.features, dtype=np.float64)
+        f2 = np.array(individual2.features, dtype=np.float64)
+
+        c1, c2 = _sbx_crossover(f1, f2, float(self.crossover_param))
+
+        child1.features = c1
+        child2.features = c2
         return child1, child2
 
-    def __get_beta(self):
-        u = random.random()
-        if u <= 0.5:
-            return (2 * u) ** (1 / (self.crossover_param + 1))
-        return (2 * (1 - u)) ** (-1 / (self.crossover_param + 1))
-
     def __mutate(self, child):
-        num_of_features = len(child.features)
-        for gene in range(num_of_features):
-            u, delta = self.__get_delta()
-            if u < 0.5:
-                child.features[gene] += delta * (child.features[gene] - self.problem.variables_range[gene][0])
-            else:
-                child.features[gene] += delta * (self.problem.variables_range[gene][1] - child.features[gene])
-            if child.features[gene] < self.problem.variables_range[gene][0]:
-                child.features[gene] = self.problem.variables_range[gene][0]
-            elif child.features[gene] > self.problem.variables_range[gene][1]:
-                child.features[gene] = self.problem.variables_range[gene][1]
-
-    def __get_delta(self):
-        u = random.random()
-        if u < 0.5:
-            return u, (2 * u) ** (1 / (self.mutation_param + 1)) - 1
-        return u, 1 - (2 * (1 - u)) ** (1 / (self.mutation_param + 1))
+        features = np.asarray(child.features, dtype=np.float64)
+        child.features = _polynomial_mutation(
+            features, self._lower, self._upper, float(self.mutation_param)
+        )
 
     def __tournament(self, population):
         participants = random.sample(population.population, self.num_of_tour_particips)
@@ -133,7 +300,6 @@ class NSGA2Utils:
             if best is None or (
                     self.crowding_operator(participant, best) == 1 and self.__choose_with_prob(self.tournament_prob)):
                 best = participant
-
         return best
 
     def __choose_with_prob(self, prob):

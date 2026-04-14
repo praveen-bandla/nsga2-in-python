@@ -31,28 +31,48 @@ def parse_args():
 
 
 def print_pareto_front(pareto_front, ticker_names):
-    """Display Pareto front results."""
-    print(f"Pareto Front: {len(pareto_front)} optimal portfolios")
-    print(f"{'#':>3} {'Sharpe':>10} {'Ann.Vol%':>10} {'DivRatio':>10} {'#Stocks':>8}")
-    print(f"{'-'*3:>3} {'-'*10:>10} {'-'*10:>10} {'-'*10:>10} {'-'*8:>8}")
+    """
+    Display the full Pareto front and three representative extreme portfolios.
+
+    In multi-objective optimization there is no single best solution — the
+    Pareto front is the answer. Every portfolio on it is optimal in the sense
+    that improving one objective requires accepting a worse value on another.
+    We highlight the three extremes so the trade-off structure is visible.
+    """
+    print(f"\nPareto Front: {len(pareto_front)} non-dominated portfolios")
+    print(f"(All are equally 'optimal' — choice depends on investor preference)\n")
+    print(f"{'#':>3} {'Ann.Ret%':>10} {'Ann.Vol%':>10} {'DivRatio':>10} {'#Stocks':>8}")
+    print(f"{'-'*3} {'-'*10} {'-'*10} {'-'*10} {'-'*8}")
 
     for i, ind in enumerate(pareto_front):
-        sharpe = -ind.objectives[0]
-        variance = ind.objectives[1]
+        ann_ret = -ind.objectives[0] * 252 * 100
+        ann_vol = math.sqrt(abs(ind.objectives[1]) * 252) * 100
         div_ratio = -ind.objectives[2]
-        ann_sharpe = sharpe * math.sqrt(252)
-        ann_vol = math.sqrt(abs(variance) * 252) * 100
         n_stocks = sum(1 for w in ind.features if w > 0.01)
-        print(f"{i+1:>3} {ann_sharpe:>10.4f} {ann_vol:>10.2f} {div_ratio:>10.4f} {n_stocks:>8}")
+        print(f"{i+1:>3} {ann_ret:>10.2f} {ann_vol:>10.2f} {div_ratio:>10.4f} {n_stocks:>8}")
 
-    best_idx = min(range(len(pareto_front)), key=lambda i: pareto_front[i].objectives[0])
-    best = pareto_front[best_idx]
-    print(f"Best Sharpe portfolio (#{best_idx+1}):")
-    weights = sorted(enumerate(best.features), key=lambda x: x[1], reverse=True)
-    print("  Top 10 holdings:")
-    for idx, w in weights[:10]:
-        name = ticker_names[idx] if idx < len(ticker_names) else f"Stock_{idx}"
-        print(f"    {name:>8}: {w*100:.2f}%")
+    # Three extremes that anchor the trade-off surface
+    extremes = {
+        "Max Return    (high return, likely higher risk)":
+            max(range(len(pareto_front)), key=lambda i: -pareto_front[i].objectives[0]),
+        "Min Variance  (lowest risk, likely lower return)":
+            min(range(len(pareto_front)), key=lambda i:  pareto_front[i].objectives[1]),
+        "Max Diversity (most diversified by asset vol)":
+            min(range(len(pareto_front)), key=lambda i:  pareto_front[i].objectives[2]),
+    }
+
+    for label, idx in extremes.items():
+        ind = pareto_front[idx]
+        ann_ret = -ind.objectives[0] * 252 * 100
+        ann_vol = math.sqrt(abs(ind.objectives[1]) * 252) * 100
+        div_ratio = -ind.objectives[2]
+        print(f"\n--- {label} ---")
+        print(f"    Ann. Return: {ann_ret:.2f}%  |  Ann. Vol: {ann_vol:.2f}%  |  Div. Ratio: {div_ratio:.4f}")
+        weights = sorted(enumerate(ind.features), key=lambda x: x[1], reverse=True)
+        print("    Top 5 holdings:")
+        for asset_idx, w in weights[:5]:
+            name = ticker_names[asset_idx] if asset_idx < len(ticker_names) else f"Stock_{asset_idx}"
+            print(f"      {name:>8}: {w*100:.2f}%")
 
 
 def main():

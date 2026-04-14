@@ -1,13 +1,14 @@
 """
 Portfolio optimization problem for NSGA-II.
-Three objectives: Sharpe ratio, variance, diversification ratio.
-All minimized (Sharpe and diversification are negated).
+Three objectives: portfolio return, variance, diversification ratio.
+All minimized (return and diversification are negated).
 """
 
 import random
 import math
 from nsga2.problem import Problem
 from nsga2.individual import Individual
+import numpy as np
 
 
 class PortfolioProblem(Problem):
@@ -16,15 +17,15 @@ class PortfolioProblem(Problem):
     Handles weight constraints: non-negative, sum to 1.
     """
 
-    def __init__(self, mean_returns, cov_matrix, std_returns, risk_free_rate=0.0):
-        self.mean_returns = list(mean_returns)
-        self.cov_matrix = [list(row) for row in cov_matrix]
-        self.std_returns = list(std_returns)
-        self.risk_free_rate = risk_free_rate
+    def __init__(self, mean_returns, cov_matrix, std_returns):
+        # mod 1: storing as numpy arrays
+        self.mean_returns = np.array(mean_returns)
+        self.cov_matrix   = np.array(cov_matrix)
+        self.std_returns  = np.array(std_returns)
         self.num_assets = len(mean_returns)
 
         objectives = [
-            self.neg_sharpe_ratio,
+            self.neg_return,
             self.portfolio_variance,
             self.neg_diversification_ratio,
         ]
@@ -46,15 +47,18 @@ class PortfolioProblem(Problem):
         individual.features = [w / total for w in weights]
         return individual
 
+    # Vecotrizing repair weights
     def repair_weights(self, individual):
         """Clip negatives to zero and normalize to sum to 1."""
-        features = [max(0.0, f) for f in individual.features]
-        total = sum(features)
+        features = np.maximum(0.0, np.array(individual.features))
+        total = features.sum()
         if total == 0:
-            features = [1.0 / self.num_assets] * self.num_assets
+            features = np.ones(self.num_assets) / self.num_assets
         else:
-            features = [f / total for f in features]
+            features = features / total 
         individual.features = features
+        
+    # -----
 
     def calculate_objectives(self, individual):
         """Repair weights then compute all objectives."""
@@ -63,20 +67,14 @@ class PortfolioProblem(Problem):
 
     # -- Pure Python math (no numpy) -- baseline for optimization later --
 
+    # mod 2: using dot product vecotrization 
     def _dot(self, a, b):
-        s = 0.0
-        for x, y in zip(a, b):
-            s += x * y
-        return s
+        return float(np.dot(a, b))
 
     def _mat_vec(self, mat, vec):
-        result = []
-        for row in mat:
-            s = 0.0
-            for m, v in zip(row, vec):
-                s += m * v
-            result.append(s)
-        return result
+        return np.dot(mat, vec)
+    
+    # ----
 
     def _portfolio_return(self, weights):
         return self._dot(weights, self.mean_returns)
@@ -85,14 +83,9 @@ class PortfolioProblem(Problem):
         cov_w = self._mat_vec(self.cov_matrix, weights)
         return self._dot(weights, cov_w)
 
-    def neg_sharpe_ratio(self, weights):
-        """Negative Sharpe ratio. Sharpe = (E[r] - r_f) / std(r)."""
-        port_return = self._portfolio_return(weights)
-        port_var = self._portfolio_variance_value(weights)
-        port_std = math.sqrt(max(port_var, 0.0))
-        if port_std < 1e-12:
-            return 0.0
-        return -(port_return - self.risk_free_rate) / port_std
+    def neg_return(self, weights):
+        """Negative portfolio return (negated so NSGA-II minimizes → maximizes return)."""
+        return -self._portfolio_return(weights)
 
     def portfolio_variance(self, weights):
         """Portfolio variance: w^T @ Sigma @ w."""
