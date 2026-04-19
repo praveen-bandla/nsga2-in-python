@@ -51,7 +51,7 @@ class SP500Pipeline:
         batches = [tickers[i:i + self.batch_size] for i in range(0, len(tickers), self.batch_size)]
         print(f"\ndownloading {len(tickers)} tickers in {len(batches)} batches")
 
-        frames: list[pd.DataFrame | None] = [None] * len(batches)
+        frames: dict[int, pd.DataFrame | pd.Series] = {}
         lock = Lock()
         pbar = tqdm(total=len(batches), unit="batch")
 
@@ -61,14 +61,16 @@ class SP500Pipeline:
                 if path.exists():
                     result = pd.read_parquet(path)
                 else:
-
                     result = yf.download(batch, start=self.start, end=self.end, progress=False)
-                    # Add validation check
                     if result is None or result.empty or "Close" not in result.columns:
                         tqdm.write(f"Batch {i:02d}: No valid data retrieved")
                         return
-                    result["Close"].to_parquet(path)
-                frames[i] = result
+                    result = result["Close"]
+                    result.to_parquet(path)
+
+                with lock:
+                    frames[i] = result
+
             except Exception as e:
                 tqdm.write(f"Batch {i:02d} failed: {e}")
             finally:
@@ -84,7 +86,7 @@ class SP500Pipeline:
             t.join()
         pbar.close()
 
-        prices = pd.concat(frames, axis=1)
+        prices = pd.concat([frames[i] for i in sorted(frames)], axis=1)
         prices = prices.loc[:, ~prices.columns.duplicated()]
         prices.dropna(axis=1, how="all", inplace=True)
         print(f"price matrix: {prices.shape[0]} days x {prices.shape[1]} tickers")
