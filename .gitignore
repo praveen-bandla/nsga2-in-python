@@ -26,3 +26,5 @@ venv/
 
 # Cython debug symbols
 cython_debug/
+
+.DS_Store
