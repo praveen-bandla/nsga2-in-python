@@ -15,7 +15,7 @@ TICKER_PATH = ROOT_DIR / "data_pipeline" / "tickers.json"
 
 # Data download configs
 BATCH_SIZE = 100  # yfinance can typically handle ~100 tickers without timeouts
-DELAY = 2.0
+DELAY = 3.0
 LOOKBACK_YEARS = 10
 START_DATE = (datetime.today() - timedelta(days=365 * LOOKBACK_YEARS + 3)).strftime("%Y-%m-%d")
 END_DATE = datetime.today().strftime("%Y-%m-%d")
