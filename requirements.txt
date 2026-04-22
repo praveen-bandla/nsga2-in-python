@@ -5,6 +5,7 @@ charset-normalizer==3.4.7
 curl_cffi==0.13.0
 frozendict==2.4.7
 idna==3.11
+matplotlib==3.10.3
 multitasking==0.0.12
 numpy==2.4.4
 pandas==3.0.2

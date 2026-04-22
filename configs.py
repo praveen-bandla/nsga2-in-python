@@ -64,6 +64,45 @@ BACKTEST_INITIAL_EQUITY = 1000.0
 BACKTESTING_RESULTS_DIR = BACKTESTING_DIR / "results"
 BACKTESTING_RESULTS_FILENAME = "fixed_lou_vs_spy.csv"
 
+
+# -----------------------------
+# Backtesting artifacts (Sliding Window / Quarterly Rebalance)
+# -----------------------------
+
+# Where to write per-rebalance frozen portfolio weights CSVs
+BACKTESTING_SLIDING_WEIGHTS_DIR = BACKTESTING_WEIGHTS_DIR / "sliding_window"
+
+# Backtest outputs (single stitched time series)
+BACKTESTING_SLIDING_RESULTS_FILENAME = "sliding_window_lou_vs_spy.csv"
+
+
+# -----------------------------
+# Analysis artifacts (plots, reports)
+# -----------------------------
+
+ANALYSIS_DIR = ROOT_DIR / "analysis"
+
+# Equity curve plot inputs/outputs
+ANALYSIS_EQUITY_CURVE_INPUT_CSV = BACKTESTING_RESULTS_DIR / BACKTESTING_SLIDING_RESULTS_FILENAME
+ANALYSIS_EQUITY_CURVE_OUTPUT_PNG = ANALYSIS_DIR / "equity_curve_portfolio_vs_spy.png"
+
+# Rebalance schedule: S&P 500 quarterly refresh (2nd Friday of Mar/Jun/Sep/Dec)
+SLIDING_REBALANCE_MONTHS = (3, 6, 9, 12)
+
+# Expanding-window training convention:
+# - We compute weights using data up to (rebalance_day - 1 trading day) to avoid look-ahead.
+# - If there isn't enough training history, we skip that rebalance date.
+SLIDING_MIN_TRAIN_DAYS = 60
+
+# Optimizer parameters for each rebalance run
+SLIDING_OPT_GENERATIONS = 200
+SLIDING_OPT_POPULATION = 100
+
+# Lou 2023 modifications (match the defaults in run_portfolio.py)
+SLIDING_USE_LOU_SELECTION = True
+SLIDING_USE_LOU_MUTATION = True
+SLIDING_USE_LOU_INIT = True
+
 # Reproducibility for the optimizer run that generates the frozen portfolio.
 # Set to None to disable seeding.
 RANDOM_SEED: int | None = 42

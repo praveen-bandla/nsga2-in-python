@@ -36,27 +36,35 @@ class PortfolioBacktester:
     def __init__(
         self,
         *,
-        returns_path: Path,
-        spy_prices_path: Path,
-        weights_csv_path: Path,
+        returns_path: Path | None = None,
+        spy_prices_path: Path | None = None,
+        weights_csv_path: Path | None = None,
         start_date: str,
         end_date: str,
         initial_equity: float = 1.0,
         trading_days_per_year: int = 252,
+        # Optional in-memory inputs (useful for sliding-window runners)
+        returns_df: pd.DataFrame | None = None,
+        spy_close: pd.Series | None = None,
+        weights_df: pd.DataFrame | None = None,
     ) -> None:
-        self.returns_path = Path(returns_path)
-        self.spy_prices_path = Path(spy_prices_path)
-        self.weights_csv_path = Path(weights_csv_path)
+        self.returns_path = Path(returns_path) if returns_path is not None else None
+        self.spy_prices_path = Path(spy_prices_path) if spy_prices_path is not None else None
+        self.weights_csv_path = Path(weights_csv_path) if weights_csv_path is not None else None
         self.start_date = str(start_date)
         self.end_date = str(end_date)
         self.initial_equity = float(initial_equity)
         self.trading_days_per_year = int(trading_days_per_year)
 
+        self._returns_df = returns_df
+        self._spy_close = spy_close
+        self._weights_df = weights_df
+
     def run(self) -> tuple[pd.DataFrame, BacktestSummary]:
         # 1) Load inputs
-        weights_df = self._load_weights()
-        returns_df = self._load_returns()
-        spy_close = self._load_spy_close()
+        weights_df = self._weights_df if self._weights_df is not None else self._load_weights()
+        returns_df = self._returns_df if self._returns_df is not None else self._load_returns()
+        spy_close = self._spy_close if self._spy_close is not None else self._load_spy_close()
 
         # 2) Align portfolio/benchmark to the same trading days
         returns_df, spy_close = self._align_dates(returns_df, spy_close)
