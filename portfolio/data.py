@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from sklearn.covariance import LedoitWolf
+import numpy as np
 
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
@@ -37,8 +39,10 @@ def load_from_pipeline():
     # The pipeline's covariance is annualized (daily * 252) which would
     # create a mismatch with daily mean_returns and std_returns.
     mean_returns = returns_df.mean().values
-    cov_matrix = returns_df.cov().values
-    std_returns = returns_df.std().values
+    lw = LedoitWolf()
+    lw.fit(returns_df.values)
+    cov_matrix = lw.covariance_
+    std_returns = np.sqrt(np.diag(lw.covariance_))
     ticker_names = list(returns_df.columns)
 
     print(f"Loaded {len(ticker_names)} stocks, {len(returns_df)} trading days")
