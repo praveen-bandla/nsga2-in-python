@@ -103,7 +103,7 @@
 
 ## Optimization Journey
 
-All runs: 100 population × 200 generations, 465 stocks, Fully optimized NSGA-II (Lou 2023). Machine: M2 Max, Python 3.13. Each config run 11 times, first run discarded as warm-up (loads Numba JIT cache / OS file cache), remaining 10 averaged.
+All runs: 100 population × 200 generations, 465 stocks, Fully optimized NSGA-II (Lou 2023). Machine: Apple M3 Pro, 36 GB RAM, Python 3.13. Each config run 11 times, first run discarded as warm-up (loads Numba JIT cache / OS file cache), remaining 10 averaged.
 
 | Branch | Config | Mean | Stdev | vs Python | vs NumPy |
 |--------|--------|------|-------|-----------|----------|
