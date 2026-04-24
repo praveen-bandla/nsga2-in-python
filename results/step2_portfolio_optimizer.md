@@ -100,3 +100,53 @@
 | Stock universe | 465 stocks |
 | Population x Generations | 100 x 200 |
 | Init population (10x) | 1,000 |
+
+## Optimization Journey (Eric's branches)
+
+All runs: 100 population × 200 generations, 465 stocks, Fully optimized NSGA-II (Lou 2023). Machine: Apple M3 Pro, 36 GB RAM, Python 3.13. Each config run 11 times, first run discarded as warm-up (loads Numba JIT cache / OS file cache), remaining 10 averaged.
+
+| Branch | Config | Mean | Stdev | vs Python | vs NumPy |
+|--------|--------|------|-------|-----------|----------|
+| (pure Python) | Initial implementation | 939.94s | — | 1.00x | — |
+| `ez-portfolio-optimizer` | **NumPy baseline** (vectorized `w @ Σ @ w`) | 11.000s | ±0.051 | 85.5x | 1.00x |
+| `ez-numba-opt` | NumPy + Numba `@njit` (sort, crossover, mutation) | 2.690s | ±0.031 | 349.4x | 4.09x |
+| `ez-cython-opt` | NumPy + Cython AOT (sort, crossover, mutation) | 2.536s | ±0.021 | 370.6x | 4.34x |
+| `ez-numba-cython-opt` | NumPy + Cython sort + Numba genetic ops | 2.690s | ±0.024 | 349.4x | 4.09x |
+
+All stdevs are <1% of their mean, so the rankings are statistically meaningful, not noise.
+
+### Reading the numbers
+- **NumPy is the real baseline.** Pure-Python's 940s is a strawman — any practitioner uses NumPy. The 85x jump from pure Python just confirms that scalar `for` loops over 465² matrices are a non-starter.
+- **Cython beats Numba by ~6%** (2.536s vs 2.690s). Both remove Python interpreter overhead from the same three hot functions, but Cython edges ahead — likely from AOT optimization + tighter compiler directive control (`boundscheck=False`, `cdivision=True`) and no JIT startup even in cached mode.
+- **Numba and Combined tie exactly at 2.690s.** Adding Numba genetic operators on top of Cython sort produces zero wall-clock gain. Once the O(N²M) sort is native code, the crossover/mutation loops over 465 genes are no longer the bottleneck — they're already fast enough that which native compiler produces them doesn't matter.
+- **Pareto front size varies (32–48) across runs** because NSGA-II is stochastic — no fixed seed. Objective values stay within the same ranges as the original baseline table.
+
+### Where time now goes (post-optimization)
+Profiling the combined branch shows the bottleneck has shifted from compute to **Python↔NumPy marshalling**:
+- `np.array(features)` conversions at the problem boundary (~21 ms total)
+- `.tolist()` conversions returning from Numba functions (~9 ms)
+- Individual object construction and attribute access
+
+Further gains require restructuring the data layout (store population as one `(N, D)` ndarray rather than list of Individual objects with list `features`), not faster kernels.
+
+## Command Reference
+```bash
+# NumPy baseline
+git checkout ez-portfolio-optimizer
+python run_portfolio.py
+
+# Numba optimization
+git checkout ez-numba-opt
+python run_portfolio.py            # first run compiles JIT (~1s overhead)
+python run_portfolio.py            # subsequent runs use cached .so
+
+# Cython optimization
+git checkout ez-cython-opt
+python setup_cython.py build_ext --inplace    # one-time build
+python run_portfolio.py
+
+# Combined
+git checkout ez-numba-cython-opt
+python setup_cython.py build_ext --inplace
+python run_portfolio.py
+```
