@@ -13,8 +13,10 @@ class Individual(object):
 
     def __eq__(self, other):
         if isinstance(self, other.__class__):
-            # Compare numpy arrays (built-in speed)
-            return np.array_equal(self.features, other.features)
+            if isinstance(self.features, np.ndarray):
+                return np.array_equal(self.features, other.features)
+            return self.features == other.features
+
         return False
 
     def dominates(self, other_individual):

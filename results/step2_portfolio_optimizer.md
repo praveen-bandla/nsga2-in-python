@@ -101,7 +101,7 @@
 | Population x Generations | 100 x 200 |
 | Init population (10x) | 1,000 |
 
-## Optimization Journey (Eric's branches)
+## Optimization Journey
 
 All runs: 100 population × 200 generations, 465 stocks, Fully optimized NSGA-II (Lou 2023). Machine: Apple M3 Pro, 36 GB RAM, Python 3.13. Each config run 11 times, first run discarded as warm-up (loads Numba JIT cache / OS file cache), remaining 10 averaged.
 
@@ -118,7 +118,7 @@ All stdevs are <1% of their mean, so the rankings are statistically meaningful, 
 ### Reading the numbers
 - **NumPy is the real baseline.** Pure-Python's 940s is a strawman — any practitioner uses NumPy. The 85x jump from pure Python just confirms that scalar `for` loops over 465² matrices are a non-starter.
 - **Cython beats Numba by ~6%** (2.536s vs 2.690s). Both remove Python interpreter overhead from the same three hot functions, but Cython edges ahead — likely from AOT optimization + tighter compiler directive control (`boundscheck=False`, `cdivision=True`) and no JIT startup even in cached mode.
-- **Numba and Combined tie exactly at 2.690s.** Adding Numba genetic operators on top of Cython sort produces zero wall-clock gain. Once the O(N²M) sort is native code, the crossover/mutation loops over 465 genes are no longer the bottleneck — they're already fast enough that which native compiler produces them doesn't matter.
+- **Numba and Combined tie exactly at 2.690s.** This is the most informative result: adding Numba genetic operators on top of Cython sort produces zero wall-clock gain. Once the O(N²M) sort is native code, the crossover/mutation loops over 465 genes are no longer the bottleneck — they're already fast enough that which native compiler produces them doesn't matter.
 - **Pareto front size varies (32–48) across runs** because NSGA-II is stochastic — no fixed seed. Objective values stay within the same ranges as the original baseline table.
 
 ### Where time now goes (post-optimization)
