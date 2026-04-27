@@ -42,10 +42,6 @@ def load_from_pipeline():
     # Compute daily statistics directly from returns (consistent units).
     # The pipeline's covariance is annualized (daily * 252) which would
     # create a mismatch with daily mean_returns and std_returns.
-    # mean_returns = np.mean(returns_array, axis=0)
-    # cov_matrix   = np.cov(returns_array.T, ddof=1)
-    # std_returns  = np.std(returns_array, axis=0, ddof=1)
-
     mean_returns = returns_df.mean().values
     lw = LedoitWolf()
     lw.fit(returns_df.values)
