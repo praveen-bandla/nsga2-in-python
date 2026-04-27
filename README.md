@@ -83,6 +83,24 @@ To deactivate later:
 deactivate
 ```
 
+### 2. Compile cython setup
+
+```bash
+python nsga2-in-python/setup_cython.py build_ext --inplace
+```
+
+### 3. Download data
+
+#### 3.1. Default batch downloader
+```bash
+python nsga2-in-python/data_pipeline/data_loader.py
+```
+
+#### 3.2. Download with Threading
+```bash
+python nsga2-in-python/data_pipeline/data_loader_threaded.py
+```
+
 ---
 
 ## NSGA-II Algorithm
