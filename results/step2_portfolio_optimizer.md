@@ -103,15 +103,28 @@
 
 ## Optimization Journey
 
+### Results (Eric)
 All runs: 100 population × 200 generations, 465 stocks, Fully optimized NSGA-II (Lou 2023). Machine: Apple M3 Pro, 36 GB RAM, Python 3.13. Each config run 11 times, first run discarded as warm-up (loads Numba JIT cache / OS file cache), remaining 10 averaged.
 
-| Branch | Config | Mean | Stdev | vs Python | vs NumPy |
-|--------|--------|------|-------|-----------|----------|
-| (pure Python) | Initial implementation | 939.94s | — | 1.00x | — |
-| `ez-portfolio-optimizer` | **NumPy baseline** (vectorized `w @ Σ @ w`) | 11.000s | ±0.051 | 85.5x | 1.00x |
-| `ez-numba-opt` | NumPy + Numba `@njit` (sort, crossover, mutation) | 2.690s | ±0.031 | 349.4x | 4.09x |
-| `ez-cython-opt` | NumPy + Cython AOT (sort, crossover, mutation) | 2.536s | ±0.021 | 370.6x | 4.34x |
-| `ez-numba-cython-opt` | NumPy + Cython sort + Numba genetic ops | 2.690s | ±0.024 | 349.4x | 4.09x |
+| Branch                   | Config                                            | Mean    | Stdev  | vs Python | vs NumPy |
+|--------------------------|---------------------------------------------------|---------|--------|-----------|----------|
+| (pure Python)            | Initial implementation                            | 939.94s | —      | 1.00x     | —        |
+| `ez-portfolio-optimizer` | **NumPy baseline** (vectorized `w @ Σ @ w`)       | 11.000s | ±0.051 | 85.5x     | 1.00x    |
+| `ez-numba-opt`           | NumPy + Numba `@njit` (sort, crossover, mutation) | 2.690s  | ±0.031 | 349.4x    | 4.09x    |
+| `ez-cython-opt`          | NumPy + Cython AOT (sort, crossover, mutation)    | 2.536s  | ±0.021 | 370.6x    | 4.34x    |
+| `ez-numba-cython-opt`    | NumPy + Cython sort + Numba genetic ops           | 2.690s  | ±0.024 | 349.4x    | 4.09x    |
+
+### Results (Jayant)
+All runs: 100 population × 200 generations, 465 stocks, Fully optimized NSGA-II (Lou 2023). Machine: Apple M3 Pro, 18 GB RAM, Python 3.13.1. Each config run 11 times, first run discarded as warm-up (loads Numba JIT cache / OS file cache), remaining 10 averaged.
+
+| Branch                   | Config                                               | Mean    | Stdev  | vs Python | vs NumPy Baseline |
+|--------------------------|------------------------------------------------------|---------|--------|-----------|----------|
+| (pure Python)            | Initial implementation                               | 939.94s | —      | 1.00x     | —        |
+| `ez-portfolio-optimizer` | **NumPy Baseline** (vectorized `w @ Σ @ w`)          | 10.57s  | ±1.81  | 88.9x     | 1.00x    |
+| `ez-numba-opt`           | Baseline + Numba `@njit` (sort, crossover, mutation) | 2.60s   | ±0.18  | 361.5x    | 4.07x    |
+| `ez-cython-opt`          | Baseline + Cython AOT (sort, crossover, mutation)    | 2.57s   | ±0.14  | 365.7x    | 4.11x    |
+| `ez-numba-cython-opt`    | Baseline + Cython sort + Numba genetic ops           | 2.55s   | ±0.11  | 368.6x    | 4.15x    |
+| `jayant-optimizations`   | NumPy Enhanced + Cython sort + Numba genetic ops     | 2.06s   | ±0.11  | 456.2x    | 5.13x    |
 
 All stdevs are <1% of their mean, so the rankings are statistically meaningful, not noise.
 
