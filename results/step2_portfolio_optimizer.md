@@ -119,14 +119,28 @@ All stdevs are <1% of their mean, so the rankings are statistically meaningful, 
 ### Results (Jayant)
 All runs: 100 population × 200 generations, 465 stocks, Fully optimized NSGA-II (Lou 2023). Machine: Apple M3 Pro, 18 GB RAM, Python 3.13.1. Each config run 11 times, first run discarded as warm-up (loads Numba JIT cache / OS file cache), remaining 10 averaged.
 
-| Branch                   | Config                                               | Mean    | Stdev  | vs Python | vs NumPy Baseline |
-|--------------------------|------------------------------------------------------|---------|--------|-----------|----------|
-| (pure Python)            | Initial implementation                               | 939.94s | —      | 1.00x     | —        |
-| `ez-portfolio-optimizer` | **NumPy Baseline** (vectorized `w @ Σ @ w`)          | 10.57s  | ±1.81  | 88.9x     | 1.00x    |
-| `ez-numba-opt`           | Baseline + Numba `@njit` (sort, crossover, mutation) | 2.60s   | ±0.18  | 361.5x    | 4.07x    |
-| `ez-cython-opt`          | Baseline + Cython AOT (sort, crossover, mutation)    | 2.57s   | ±0.14  | 365.7x    | 4.11x    |
-| `ez-numba-cython-opt`    | Baseline + Cython sort + Numba genetic ops           | 2.55s   | ±0.11  | 368.6x    | 4.15x    |
-| `jayant-optimizations`   | NumPy Enhanced + Cython sort + Numba genetic ops     | 2.06s   | ±0.11  | 456.2x    | 5.13x    |
+| Branch                   | Config                                               | Mean (s) | Stdev (s) | Speedup (vs Python) | Speedup (vs NumPy Baseline) |
+|--------------------------|------------------------------------------------------|----------|-----------|---------------------|-----------------------------|
+| (pure Python)            | Initial implementation                               | 939.94   | —         | 1.00x               | —                           |
+| `ez-portfolio-optimizer` | **NumPy Baseline** (vectorized `w @ Σ @ w`)          | 10.57    | ±1.81     | 88.9x               | 1.00x    |
+| `ez-numba-opt`           | Baseline + Numba `@njit` (sort, crossover, mutation) | 2.60     | ±0.18     | 361.5x              | 4.07x    |
+| `ez-cython-opt`          | Baseline + Cython AOT (sort, crossover, mutation)    | 2.57     | ±0.14     | 365.7x              | 4.11x    |
+| `ez-numba-cython-opt`    | Baseline + Cython sort + Numba genetic ops           | 2.55     | ±0.11     | 368.6x              | 4.15x    |
+| `jayant-optimizations`   | NumPy v2 Enhanced + Cython sort + Numba genetic ops  | 2.06     | ±0.11     | 456.2x              | 5.13x    |
+
+
+#### > Reporting errors to check stability
+
+| Branch                   | Config                                               | Mean (s) | Stdev (s) | Speedup (vs Python) | Speedup (vs NumPy Baseline) | CV (%) | Rel. Error (%) |
+|--------------------------|------------------------------------------------------|----------|-----------|---------------------|-----------------------------|--------|----------------|
+| (pure Python)            | Initial implementation                               | 939.94   | —         | 1.00x               | —                           |        |                |
+| `ez-portfolio-optimizer` | **NumPy Baseline** (vectorized `w @ Σ @ w`)          | 12.16    | ±0.238    | 77.30x              | 1.00x                       | 1.96   | 1.21           |
+| `ez-numba-opt`           | Baseline + Numba `@njit` (sort, crossover, mutation) | 2.55     | ±0.124    | 368.52x             | 4.77x                       | 4.87   | 3.02           |
+| `ez-cython-opt`          | Baseline + Cython AOT (sort, crossover, mutation)    | 2.49     | ±0.024    | 378.28x             | 4.89x                       | 0.96   | 0.60           |
+| `ez-numba-cython-opt`    | Baseline + Cython sort + Numba genetic ops           | 2.54     | ±0.113    | 370.00x             | 4.79x                       | 4.43   | 2.75           |
+| `jayant-optimizations`   | NumPy v2 Enhanced + Cython sort + Numba genetic ops  | 2.06     | ±0.117    | 456.80x             | 5.91x                       | 5.67   | 3.51           |
+
+All error rates are under the acceptable range, so the rankings are statistically meaningful.
 
 ### Reading the numbers
 - **NumPy is the real baseline.** Pure-Python's 940s is a strawman — any practitioner uses NumPy. The 85x jump from pure Python just confirms that scalar `for` loops over 465² matrices are a non-starter.
