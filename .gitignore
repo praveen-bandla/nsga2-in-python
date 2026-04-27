@@ -3,6 +3,8 @@ nsga_2.egg-info/
 
 # Byte-compiled
 __pycache__/
+cython*.c
+cython*.so
 
 # Jupyter Notebook
 .ipynb_checkpoints
