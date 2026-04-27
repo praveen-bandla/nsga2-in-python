@@ -1,3 +1,6 @@
+nsga2.egg-info/
+nsga_2.egg-info/
+
 # Byte-compiled
 __pycache__/
 
