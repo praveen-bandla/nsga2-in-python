@@ -114,6 +114,8 @@ All runs: 100 population × 200 generations, 465 stocks, Fully optimized NSGA-II
 | `ez-cython-opt`          | NumPy + Cython AOT (sort, crossover, mutation)    | 2.536s  | ±0.021 | 370.6x    | 4.34x    |
 | `ez-numba-cython-opt`    | NumPy + Cython sort + Numba genetic ops           | 2.690s  | ±0.024 | 349.4x    | 4.09x    |
 
+All stdevs are <1% of their mean, so the rankings are statistically meaningful, not noise.
+
 ### Results (Jayant)
 All runs: 100 population × 200 generations, 465 stocks, Fully optimized NSGA-II (Lou 2023). Machine: Apple M3 Pro, 18 GB RAM, Python 3.13.1. Each config run 11 times, first run discarded as warm-up (loads Numba JIT cache / OS file cache), remaining 10 averaged.
 
@@ -125,8 +127,6 @@ All runs: 100 population × 200 generations, 465 stocks, Fully optimized NSGA-II
 | `ez-cython-opt`          | Baseline + Cython AOT (sort, crossover, mutation)    | 2.57s   | ±0.14  | 365.7x    | 4.11x    |
 | `ez-numba-cython-opt`    | Baseline + Cython sort + Numba genetic ops           | 2.55s   | ±0.11  | 368.6x    | 4.15x    |
 | `jayant-optimizations`   | NumPy Enhanced + Cython sort + Numba genetic ops     | 2.06s   | ±0.11  | 456.2x    | 5.13x    |
-
-All stdevs are <1% of their mean, so the rankings are statistically meaningful, not noise.
 
 ### Reading the numbers
 - **NumPy is the real baseline.** Pure-Python's 940s is a strawman — any practitioner uses NumPy. The 85x jump from pure Python just confirms that scalar `for` loops over 465² matrices are a non-starter.
