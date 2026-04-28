@@ -8,12 +8,19 @@ Usage:
 """
 
 import argparse
+import csv
 import math
+import random
 import time
+from pathlib import Path
+
+import numpy as np
 
 from portfolio.data import load_from_pipeline
 from portfolio.problem import PortfolioProblem
 from portfolio.optimizer import PortfolioEvolution
+
+import configs
 
 
 def parse_args():
@@ -58,6 +65,12 @@ def print_pareto_front(pareto_front, ticker_names):
 def main():
     args = parse_args()
 
+    # Reproducibility: seed both Python's RNG and NumPy's RNG.
+    seed = getattr(configs, "RANDOM_SEED", None)
+    if seed is not None:
+        random.seed(int(seed))
+        np.random.seed(int(seed))
+
     # Lou 2023 paper tests 3 configurations:
     # 1. Standard NSGA-II
     # 2. NSGA-II + selection optimization
@@ -93,6 +106,22 @@ def main():
     elapsed = time.time() - start_time
     print(f"Completed in {elapsed:.2f} seconds")
     print_pareto_front(pareto_front, ticker_names)
+
+    # Save the chosen frozen portfolio (best Sharpe on the Pareto front)
+    best_idx = min(range(len(pareto_front)), key=lambda i: pareto_front[i].objectives[0])
+    best = pareto_front[best_idx]
+
+    weights_dir = Path(getattr(configs, "BACKTESTING_WEIGHTS_DIR", Path("backtesting") / "weights"))
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    weights_path = weights_dir / getattr(configs, "BACKTESTING_WEIGHTS_FILENAME", "lou_fixed_portfolio_weights.csv")
+
+    with weights_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["ticker", "weight"])
+        for ticker, weight in zip(ticker_names, best.features):
+            writer.writerow([ticker, float(weight)])
+
+    print(f"Saved frozen portfolio weights to: {weights_path}")
 
 
 if __name__ == "__main__":
