@@ -44,7 +44,7 @@ def main() -> None:
 
     ax.set_title("Equity Progression: Portfolio vs SPY")
     ax.set_xlabel("Date")
-    ax.set_ylabel("Equity")
+    ax.set_ylabel("Portfolio Valuation ($)")
     ax.grid(True, alpha=0.3)
     ax.legend()
 
