@@ -20,9 +20,9 @@ class PortfolioProblem(Problem):
     """
 
     def __init__(self, mean_returns, cov_matrix, std_returns, risk_free_rate=0.0):
-        self.mean_returns_np = np.asarray(mean_returns, dtype=np.float64)
-        self.cov_matrix_np = np.asarray(cov_matrix, dtype=np.float64)
-        self.std_returns_np = np.asarray(std_returns, dtype=np.float64)
+        self.mean_returns_np = mean_returns
+        self.cov_matrix_np = cov_matrix
+        self.std_returns_np = std_returns
         self.risk_free_rate = risk_free_rate
         self.num_assets = len(mean_returns)
 
@@ -45,24 +45,24 @@ class PortfolioProblem(Problem):
         individual = Individual()
         weights = np.random.random(self.num_assets)
         weights /= weights.sum()
-        individual.features = weights.tolist()
+        individual.features = weights.astype(np.float64)
         return individual
 
     def repair_weights(self, individual):
         """Clip negatives to zero and normalize to sum to 1."""
-        w = np.array(individual.features, dtype=np.float64)
-        np.maximum(w, 0.0, out=w)
+        w = individual.features
+        w = np.maximum(w, 0.0)
         total = w.sum()
         if total == 0:
-            w[:] = 1.0 / self.num_assets
+            w = np.ones(self.num_assets) / self.num_assets
         else:
             w /= total
-        individual.features = w.tolist()
+        individual.features = w
 
     def calculate_objectives(self, individual):
         """Repair weights and compute all 3 objectives in one pass."""
         self.repair_weights(individual)
-        w = np.array(individual.features, dtype=np.float64)
+        w = individual.features
 
         cov_w = self.cov_matrix_np @ w
         port_var = float(w @ cov_w)
