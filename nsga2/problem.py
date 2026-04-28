@@ -1,5 +1,6 @@
+import numpy as np
+
 from nsga2.individual import Individual
-import random
 
 
 class Problem:
@@ -17,12 +18,25 @@ class Problem:
             self.variables_range = variables_range
 
     def generate_individual(self):
+        """Generate individual with features as numpy array (not list)."""
         individual = Individual()
-        individual.features = [random.uniform(*x) for x in self.variables_range]
+        # Use NumPy random (vectorized) instead of list comprehension
+        features = np.array(
+            [np.random.uniform(low, high) for low, high in self.variables_range],
+            dtype=np.float64
+        )
+        individual.features = features  # Store as array directly
         return individual
 
     def calculate_objectives(self, individual):
+        """Evaluate objectives. PortfolioProblem overrides this."""
         if self.expand:
-            individual.objectives = [f(*individual.features) for f in self.objectives]
+            individual.objectives = np.array(
+                [f(*individual.features) for f in self.objectives],
+                dtype=np.float64
+            )
         else:
-            individual.objectives = [f(individual.features) for f in self.objectives]
+            individual.objectives = np.array(
+                [f(individual.features) for f in self.objectives],
+                dtype=np.float64
+            )
