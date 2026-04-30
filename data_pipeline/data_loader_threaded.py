@@ -61,7 +61,7 @@ class SP500Pipeline:
 
             try:
                 if path.exists():
-                    results[i] = pd.read_parquet(path)
+                    df = pd.read_parquet(path)
                 else:
                     # yf.Ticker is stateless — fully thread-safe, no shared._DFS mutation
                     frames = {
@@ -73,7 +73,10 @@ class SP500Pipeline:
                     df = pd.concat(frames.values(), axis=1)
                     df.columns = batch
                     df.to_parquet(path)
-                    results[i] = df
+
+                if df.index.tz is not None:
+                    df.index = df.index.tz_localize(None)
+                results[i] = df
 
             except Exception as e:
                 tqdm.write(f"Batch {i:02d} failed: {e}")
