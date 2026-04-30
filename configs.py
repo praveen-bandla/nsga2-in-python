@@ -9,9 +9,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 DATA_DIR = ROOT_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"
 PROC_DIR = DATA_DIR / "processed"
-
 TICKER_PATH = ROOT_DIR / "data_pipeline" / "tickers.json"
-
 
 # Data download configs
 BATCH_SIZE = 100  # yfinance can typically handle ~100 tickers without timeouts
@@ -20,16 +18,10 @@ LOOKBACK_YEARS = 10
 START_DATE = (datetime.today() - timedelta(days=365 * LOOKBACK_YEARS + 3)).strftime("%Y-%m-%d")
 END_DATE = datetime.today().strftime("%Y-%m-%d")
 
-
 with TICKER_PATH.open("r", encoding="utf-8") as f:
     _raw = json.load(f)
 
 _TICKERS_JSON = _raw.get("tickers") or _raw.get("TICKERS")
-
-if _TICKERS_JSON is None:
-    raise KeyError(
-        f"Expected 'tickers' or 'TICKERS' key in {TICKER_PATH}, found: {list(_raw.keys())}"
-    )
 
 TEST_TICKERS = _TICKERS_JSON["TEST"]
 SP500_TICKERS = _TICKERS_JSON["SP500"]
@@ -47,7 +39,7 @@ BENCHMARK_SPY_FILENAME = "benchmark_spy.parquet"
 
 
 # -----------------------------
-# Backtesting artifacts (v1)
+# Backtesting artifacts
 # -----------------------------
 
 # Where to write the frozen portfolio weights CSV
@@ -55,7 +47,7 @@ BACKTESTING_DIR = ROOT_DIR / "backtesting"
 BACKTESTING_WEIGHTS_DIR = BACKTESTING_DIR / "weights"
 BACKTESTING_WEIGHTS_FILENAME = "lou_fixed_portfolio_weights.csv"
 
-# Backtest run parameters (fixed-weights v1)
+# Backtest run parameters (fixed-weights)
 BACKTEST_START_DATE = "2020-01-01"
 BACKTEST_END_DATE = "2024-12-31"
 BACKTEST_INITIAL_EQUITY = 1000.0
@@ -63,6 +55,12 @@ BACKTEST_INITIAL_EQUITY = 1000.0
 # Backtest outputs
 BACKTESTING_RESULTS_DIR = BACKTESTING_DIR / "results"
 BACKTESTING_RESULTS_FILENAME = "fixed_lou_vs_spy.csv"
+
+# Runner paths (fixed-weights)
+BACKTEST_RETURNS_PATH = PROC_DIR / RETURNS_DAILY_FILENAME
+BACKTEST_SPY_PRICES_PATH = PROC_DIR / BENCHMARK_SPY_FILENAME
+BACKTEST_WEIGHTS_CSV_PATH = BACKTESTING_WEIGHTS_DIR / BACKTESTING_WEIGHTS_FILENAME
+BACKTEST_RESULTS_CSV_PATH = BACKTESTING_RESULTS_DIR / BACKTESTING_RESULTS_FILENAME
 
 
 # -----------------------------
@@ -74,6 +72,9 @@ BACKTESTING_SLIDING_WEIGHTS_DIR = BACKTESTING_WEIGHTS_DIR / "sliding_window"
 
 # Backtest outputs (single stitched time series)
 BACKTESTING_SLIDING_RESULTS_FILENAME = "sliding_window_lou_vs_spy.csv"
+
+# Runner paths (sliding window / quarterly rebalance)
+BACKTEST_SLIDING_RESULTS_CSV_PATH = BACKTESTING_RESULTS_DIR / BACKTESTING_SLIDING_RESULTS_FILENAME
 
 
 # -----------------------------
@@ -107,7 +108,6 @@ SLIDING_USE_LOU_INIT = True
 # Set to None to disable seeding.
 RANDOM_SEED: int | None = 42
 
-
 # -----------------------------
 # Backtesting / extractor (RETIRED)
 # -----------------------------
@@ -122,11 +122,10 @@ EXTRACTOR_PRICES_FILENAME = PRICES_ADJ_CLOSE_FILENAME
 # - Returns: fill missing values with 0.0 (neutral return)
 # - Prices: forward-fill then back-fill to get a valid price vector each day
 EXTRACTOR_RETURNS_FILL_VALUE = 0.0
-EXTRACTOR_PRICES_FILL_METHOD = "ffill_bfill"  # supported: "ffill_bfill"
+EXTRACTOR_PRICES_FILL_METHOD = "ffill_bfill"
 
 # Ticker ordering
 EXTRACTOR_SORT_TICKERS = True
-
 
 # Computation parameters
 TRADING_DAYS_PER_YEAR = 252

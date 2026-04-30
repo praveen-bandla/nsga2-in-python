@@ -43,7 +43,6 @@ class PortfolioBacktester:
         end_date: str,
         initial_equity: float = 1.0,
         trading_days_per_year: int = 252,
-        # Optional in-memory inputs (useful for sliding-window runners)
         returns_df: pd.DataFrame | None = None,
         spy_close: pd.Series | None = None,
         weights_df: pd.DataFrame | None = None,
@@ -101,8 +100,6 @@ class PortfolioBacktester:
     def _load_weights(self) -> pd.DataFrame:
         """Load the frozen weight vector from CSV."""
         weights_df = pd.read_csv(self.weights_csv_path)
-        if not {"ticker", "weight"}.issubset(weights_df.columns):
-            raise ValueError("Weights CSV must have columns: ticker, weight")
         return weights_df
 
     def _load_returns(self) -> pd.DataFrame:
@@ -170,7 +167,7 @@ class PortfolioBacktester:
     def _portfolio_simple_returns(self, returns_df: pd.DataFrame, w: np.ndarray) -> np.ndarray:
         """Convert asset log returns -> simple returns, then compute portfolio return series."""
         log_r = returns_df.to_numpy(dtype=float)
-        simple_r = np.expm1(log_r)  # exp(log_r) - 1
+        simple_r = np.expm1(log_r)
         return (simple_r @ w).reshape(-1)
 
     def _spy_simple_returns(self, spy_close: pd.Series) -> np.ndarray:

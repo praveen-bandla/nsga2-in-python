@@ -4,37 +4,20 @@ from pathlib import Path
 import sys
 
 import pandas as pd
+import matplotlib.pyplot as plt 
+
+from configs import ANALYSIS_EQUITY_CURVE_INPUT_CSV, ANALYSIS_EQUITY_CURVE_OUTPUT_PNG
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from configs import ANALYSIS_EQUITY_CURVE_INPUT_CSV, ANALYSIS_EQUITY_CURVE_OUTPUT_PNG
-
-
-def _require_columns(df: pd.DataFrame, columns: list[str]) -> None:
-    missing = [c for c in columns if c not in df.columns]
-    if missing:
-        raise KeyError(f"Missing columns in input CSV: {missing}. Found: {list(df.columns)}")
-
-
 def main() -> None:
     input_csv: Path = ANALYSIS_EQUITY_CURVE_INPUT_CSV
     output_png: Path = ANALYSIS_EQUITY_CURVE_OUTPUT_PNG
 
-    if not input_csv.exists():
-        raise FileNotFoundError(
-            f"Input CSV not found at {input_csv}. "
-            "Run the sliding-window backtest first, or update ANALYSIS_EQUITY_CURVE_INPUT_CSV in configs.py."
-        )
-
     df = pd.read_csv(input_csv, parse_dates=["date"])
-    _require_columns(df, ["date", "portfolio_equity", "spy_equity"])
-
     df = df.sort_values("date")
-
-    # Local import so the repo can still be used without matplotlib unless this script is run.
-    import matplotlib.pyplot as plt  # noqa: PLC0415
 
     output_png.parent.mkdir(parents=True, exist_ok=True)
 

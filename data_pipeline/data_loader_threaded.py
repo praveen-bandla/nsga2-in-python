@@ -19,7 +19,7 @@ _ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(_ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(_ROOT_DIR))
 
-import configs
+from configs import *
 
 warnings.filterwarnings("ignore")
 
@@ -29,13 +29,13 @@ class SP500Pipeline:
     def __init__(self, tickers: list[str] | None = None):
         self.base = Path(__file__).parent
 
-        self.raw = Path(configs.RAW_DIR)
-        self.proc = Path(configs.PROC_DIR)
-        self.end = configs.END_DATE
-        self.start = configs.START_DATE
-        self.batch_size = 5 # configs.BATCH_SIZE
-        self.delay = configs.DELAY
-        self.tickers = tickers if tickers is not None else list(configs.DEFAULT_TICKERS)
+        self.raw = RAW_DIR
+        self.proc = PROC_DIR
+        self.end = END_DATE
+        self.start = START_DATE
+        self.batch_size = 5
+        self.delay = DELAY
+        self.tickers = tickers if tickers is not None else list(DEFAULT_TICKERS)
 
         for d in (self.raw, self.proc):
             d.mkdir(parents=True, exist_ok=True)
@@ -47,8 +47,6 @@ class SP500Pipeline:
 
 
     def download_prices(self, tickers):
-        '''downloads adjusted close prices for the given tickers in batches (will download 492/503
-        since some tickers are new or delisted within the 10 year window) '''
         batches = [tickers[i:i + self.batch_size] for i in range(0, len(tickers), self.batch_size)]
         print(f"\ndownloading {len(tickers)} tickers in {len(batches)} batches")
 
@@ -57,7 +55,7 @@ class SP500Pipeline:
         lock = Lock()
 
         def fetch_batch(i: int, batch: list[str], pbar: tqdm) -> None:
-            path = self.raw / configs.RAW_BATCH_FILENAME_TEMPLATE.format(batch_idx=i)
+            path = self.raw / RAW_BATCH_FILENAME_TEMPLATE.format(batch_idx=i)
 
             try:
                 if path.exists():
@@ -95,9 +93,6 @@ class SP500Pipeline:
         # Filter None (failed batches), concat in original order
         frames = [r for r in results if r is not None]
 
-        # for f in frames:
-        #     print(f)
-
         prices = pd.concat(frames, axis=1)
         prices = prices.loc[:, ~prices.columns.duplicated()]
         prices.dropna(axis=1, how="all", inplace=True)
@@ -107,7 +102,7 @@ class SP500Pipeline:
 
     def compute_matrices(self, prices):
         print("\ncomputing return & covariance matrices")
-        prices.to_parquet(self.proc / configs.PRICES_ADJ_CLOSE_FILENAME)
+        prices.to_parquet(self.proc / PRICES_ADJ_CLOSE_FILENAME)
 
         # daily log returns: log(P_t / P_{t-1})
         daily = np.log(prices/prices.shift(1))
@@ -118,23 +113,23 @@ class SP500Pipeline:
         monthly = np.log(monthly_prices/monthly_prices.shift(1))
         monthly = monthly.dropna(how="all")
 
-        daily.to_parquet(self.proc / configs.RETURNS_DAILY_FILENAME)
-        monthly.to_parquet(self.proc / configs.RETURNS_MONTHLY_FILENAME)
+        daily.to_parquet(self.proc / RETURNS_DAILY_FILENAME)
+        monthly.to_parquet(self.proc / RETURNS_MONTHLY_FILENAME)
 
-        daily_filtered = daily.loc[:, daily.notna().sum() >= configs.MIN_DAILY_OBSERVATIONS]
-        cov_daily = daily_filtered.cov() * configs.TRADING_DAYS_PER_YEAR
-        cov_daily.to_parquet(self.proc / configs.COVARIANCE_DAILY_FILENAME)
+        daily_filtered = daily.loc[:, daily.notna().sum() >= MIN_DAILY_OBSERVATIONS]
+        cov_daily = daily_filtered.cov() * TRADING_DAYS_PER_YEAR
+        cov_daily.to_parquet(self.proc / COVARIANCE_DAILY_FILENAME)
 
-        monthly_filtered = monthly.loc[:, monthly.notna().sum() >= configs.MIN_MONTHLY_OBSERVATIONS]
-        cov_monthly = monthly_filtered.cov() * configs.MONTHS_PER_YEAR
-        cov_monthly.to_parquet(self.proc / configs.COVARIANCE_MONTHLY_FILENAME)
+        monthly_filtered = monthly.loc[:, monthly.notna().sum() >= MIN_MONTHLY_OBSERVATIONS]
+        cov_monthly = monthly_filtered.cov() * TRADING_DAYS_PER_YEAR
+        cov_monthly.to_parquet(self.proc / COVARIANCE_MONTHLY_FILENAME)
 
 
     def download_benchmark(self):
         print("\ndownloading SPY benchmark")
         spy = yf.download("SPY", start=self.start, end=self.end, progress=False)
         spy = spy[["Close"]].rename(columns={"Close": "SPY"})
-        spy.to_parquet(self.proc / configs.BENCHMARK_SPY_FILENAME)
+        spy.to_parquet(self.proc / BENCHMARK_SPY_FILENAME)
 
 
     def run(self):
@@ -145,5 +140,5 @@ class SP500Pipeline:
 
 
 if __name__ == "__main__":
-    tickers = configs.TEST_TICKERS if "--test" in sys.argv else None
+    tickers = TEST_TICKERS if "--test" in sys.argv else None
     SP500Pipeline(tickers=tickers).run()
