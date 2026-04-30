@@ -82,6 +82,18 @@ This writes results to:
 backtesting/results/fixed_lou_vs_spy.csv
 ```
 
+### 5. Plot the equity curve
+
+```bash
+python analysis/plot_equity_curve.py
+```
+
+This writes:
+
+```text
+analysis/equity_curve_portfolio_vs_spy.png
+```
+
 ---
 
 ## Table of Contents
