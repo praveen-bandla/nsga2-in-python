@@ -82,20 +82,6 @@ This writes results to:
 backtesting/results/fixed_lou_vs_spy.csv
 ```
 
-### 5. Plot the equity curve
-
-```bash
-python analysis/plot_equity_curve.py
-```
-
-This writes:
-
-```text
-analysis/equity_curve_portfolio_vs_spy.png
-```
-
-> Note: `analysis/plot_equity_curve.py` currently reads the sliding-window backtest CSV configured in `configs.py` (`backtesting/results/sliding_window_lou_vs_spy.csv`). If you only ran the fixed-weight backtest from step 4, either skip this step or update `ANALYSIS_EQUITY_CURVE_INPUT_CSV` in `configs.py`.
-
 ---
 
 ## Table of Contents
@@ -373,6 +359,7 @@ To run the walk-forward (quarterly) **sliding-window** backtest vs SPY (expandin
 ```
 
 Default outputs:
+
 - Stitched backtest CSV: `backtesting/results/sliding_window_lou_vs_spy.csv`
 - One weights CSV per rebalance date: `backtesting/weights/sliding_window/weights_YYYY-MM-DD.csv`
 
