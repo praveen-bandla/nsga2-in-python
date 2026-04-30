@@ -30,7 +30,15 @@ python -m pip install -r requirements.txt
 
 > Install from `requirements.txt` after activating the virtual environment.
 
-### 2. Download data
+### 2. Build the Cython extension
+
+For best performance, build the Cython extension before running the optimizer:
+
+```bash
+python setup_cython.py build_ext --inplace
+```
+
+### 3. Download data
 
 Small test dataset:
 
@@ -50,7 +58,7 @@ Optional threaded downloader:
 python data_pipeline/data_loader_threaded.py
 ```
 
-### 3. Run the portfolio optimizer
+### 4. Run the portfolio optimizer
 
 Default fully optimized run:
 
@@ -70,7 +78,7 @@ This writes the selected portfolio weights to:
 backtesting/weights/lou_fixed_portfolio_weights.csv
 ```
 
-### 4. Run the SPY benchmark backtest
+### 5. Run the SPY benchmark backtest
 
 ```bash
 python backtesting/backtest_runner.py
@@ -82,7 +90,7 @@ This writes results to:
 backtesting/results/fixed_lou_vs_spy.csv
 ```
 
-### 5. Plot the equity curve
+### 6. Plot the equity curve
 
 ```bash
 python analysis/plot_equity_curve.py
@@ -143,7 +151,7 @@ nsga2-in-python/
 ├── run_portfolio.py        # Main optimizer entry point
 ├── profile_portfolio.py    # Performance profiling
 ├── configs.py              # Paths, dates, batch size, seeds
-├── setup_cython.py         # Optional Cython build step
+├── setup_cython.py         # Cython build step for best performance
 └── requirements.txt
 ```
 
@@ -157,9 +165,9 @@ nsga2-in-python/
 
 ## Setup Notes
 
-### Optional Cython build
+### Cython build
 
-The optimizer can run without the compiled Cython extension. If you want to build it for speed, run this from the repo root:
+The optimizer can run without the compiled Cython extension, but Quick Start includes it because it improves performance. Run this from the repo root:
 
 ```bash
 python -m pip install Cython setuptools
