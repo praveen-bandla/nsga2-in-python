@@ -161,28 +161,29 @@ def main() -> None:
         raise ValueError("benchmark_spy.parquet must contain a 'SPY' column")
     spy_close = spy_df.loc[:, ["SPY"]].astype(float).squeeze("columns")
 
-    # Align to common trading days once.
+    # Align to common trading days once (full history).
     common_days = returns_df.index.intersection(spy_close.index)
     if len(common_days) == 0:
         raise ValueError("No overlapping dates between returns and SPY benchmark")
-    returns_df = returns_df.loc[common_days]
-    spy_close = spy_close.loc[common_days]
+    returns_all = returns_df.loc[common_days]
+    spy_all = spy_close.loc[common_days]
 
-    # Slice to the overall backtest window.
+    # Slice to the overall backtest window for evaluation.
     start_ts = pd.Timestamp(overall_start)
     end_ts = pd.Timestamp(overall_end)
-    mask = (returns_df.index >= start_ts) & (returns_df.index <= end_ts)
-    returns_df = returns_df.loc[mask]
-    spy_close = spy_close.loc[mask]
-    trading_days = returns_df.index
+    mask = (returns_all.index >= start_ts) & (returns_all.index <= end_ts)
+    returns_bt = returns_all.loc[mask]
+    spy_bt = spy_all.loc[mask]
+    trading_days_bt = returns_bt.index
+    trading_days_all = returns_all.index
 
-    if len(trading_days) < 2:
+    if len(trading_days_bt) < 2:
         raise ValueError("Backtest window too small after filtering")
 
     refresh_days = compute_refresh_days(
         start_date=overall_start,
         end_date=overall_end,
-        trading_days=trading_days,
+        trading_days=trading_days_bt,
         months=tuple(SLIDING_REBALANCE_MONTHS),
     )
     if len(refresh_days) == 0:
@@ -198,7 +199,39 @@ def main() -> None:
     results_path = Path(BACKTEST_SLIDING_RESULTS_CSV_PATH)
 
     segments: list[pd.DataFrame] = []
-    current_equity = float(BACKTEST_INITIAL_EQUITY)
+    current_equity_port = float(BACKTEST_INITIAL_EQUITY)
+    current_equity_spy = float(BACKTEST_INITIAL_EQUITY)
+
+    # Optional initial segment: hold from BACKTEST_START_DATE until the day before
+    # the first rebalance day, using weights trained on all data up to the prior trading day.
+    first_rebalance = refresh_days[0]
+    initial_hold_start = pd.Timestamp(overall_start).normalize()
+    initial_hold_end = (pd.Timestamp(first_rebalance).normalize() - pd.Timedelta(days=1)).normalize()
+    initial_hold_end = min(initial_hold_end, pd.Timestamp(overall_end).normalize())
+
+    if initial_hold_start <= initial_hold_end:
+        train_end0 = _previous_trading_day(initial_hold_start, trading_days_all)
+        if train_end0 is not None:
+            returns_train0 = returns_all.loc[:train_end0]
+            if len(returns_train0) >= int(SLIDING_MIN_TRAIN_DAYS):
+                weights_df0 = _optimize_weights_from_history(returns_train0)
+                weights_path0 = Path(BACKTESTING_SLIDING_WEIGHTS_DIR) / f"weights_{initial_hold_start.date()}.csv"
+                _write_weights_csv(weights_df0, weights_path0)
+
+                bt0 = PortfolioBacktester(
+                    start_date=str(initial_hold_start.date()),
+                    end_date=str(initial_hold_end.date()),
+                    initial_equity=current_equity_port,
+                    spy_initial_equity=current_equity_spy,
+                    trading_days_per_year=int(TRADING_DAYS_PER_YEAR),
+                    returns_df=returns_bt,
+                    spy_close=spy_bt,
+                    weights_df=weights_df0,
+                )
+                seg0, _ = bt0.run()
+                segments.append(seg0)
+                current_equity_port = float(seg0["portfolio_equity"].iloc[-1])
+                current_equity_spy = float(seg0["spy_equity"].iloc[-1])
 
     for i, rebalance_day in enumerate(refresh_days):
         hold_start = rebalance_day
@@ -214,12 +247,12 @@ def main() -> None:
         if hold_start.normalize() > hold_end:
             continue
 
-        train_end = _previous_trading_day(hold_start, trading_days)
+        train_end = _previous_trading_day(hold_start, trading_days_all)
         if train_end is None:
             # No prior data to train on.
             continue
 
-        returns_train = returns_df.loc[pd.Timestamp(overall_start) : train_end]
+        returns_train = returns_all.loc[:train_end]
         if len(returns_train) < min_train_days:
             # Skip early quarters until we have enough data.
             continue
@@ -235,16 +268,18 @@ def main() -> None:
         bt = PortfolioBacktester(
             start_date=str(hold_start.date()),
             end_date=str(hold_end.date()),
-            initial_equity=current_equity,
+            initial_equity=current_equity_port,
+            spy_initial_equity=current_equity_spy,
             trading_days_per_year=int(TRADING_DAYS_PER_YEAR),
-            returns_df=returns_df,
-            spy_close=spy_close,
+            returns_df=returns_bt,
+            spy_close=spy_bt,
             weights_df=weights_df,
         )
 
         seg_df, _ = bt.run()
         segments.append(seg_df)
-        current_equity = float(seg_df["portfolio_equity"].iloc[-1])
+        current_equity_port = float(seg_df["portfolio_equity"].iloc[-1])
+        current_equity_spy = float(seg_df["spy_equity"].iloc[-1])
 
     if len(segments) == 0:
         raise ValueError(
