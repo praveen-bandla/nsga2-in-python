@@ -17,7 +17,6 @@ python3 -m venv venv
 source venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python -m pip install numba scikit-learn pyarrow
 ```
 
 #### Windows PowerShell
@@ -27,10 +26,9 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python -m pip install numba scikit-learn pyarrow
 ```
 
-> `numba`, `scikit-learn`, and `pyarrow` are required by the current portfolio/data pipeline code even though they are not all pinned in `requirements.txt` yet.
+> Install from `requirements.txt` after activating the virtual environment.
 
 ### 2. Download data
 
@@ -95,6 +93,8 @@ This writes:
 ```text
 analysis/equity_curve_portfolio_vs_spy.png
 ```
+
+> Note: `analysis/plot_equity_curve.py` currently reads the sliding-window backtest CSV configured in `configs.py` (`backtesting/results/sliding_window_lou_vs_spy.csv`). If you only ran the fixed-weight backtest from step 4, either skip this step or update `ANALYSIS_EQUITY_CURVE_INPUT_CSV` in `configs.py`.
 
 ---
 
