@@ -5,6 +5,7 @@ An optimized implementation of NSGA-II for multi-objective portfolio optimizatio
 ## Table of Contents
 
 - [Overview](#overview)
+- [Project Structure](#project-structure)
 - [Key Improvements](#key-improvements)
 - [Setup](#setup)
 - [NSGA-II Algorithm](#nsga-ii-algorithm)
@@ -29,6 +30,72 @@ This project implements an optimized version of NSGA-II (Non-dominated Sorting G
 1. **Optimized NSGA-II Library**: Highly efficient multi-objective optimization algorithm supporting unlimited objectives and dimensions
 2. **Data Pipeline**: Automated financial data download and processing with S&P 500 and SPY benchmark tracking
 3. **Portfolio Optimizer**: Multi-objective portfolio analysis integrated with the NSGA-II algorithm
+
+---
+
+## Project Structure
+
+The repository splits into the **core pipeline** (everything needed to run the optimizer) and a small **testing & validation** group (used to verify the speed claim and backtest the resulting portfolios). Auxiliary EDA notebooks and demo scripts are not listed here.
+
+Each entry is tagged with its origin:
+- **`(upstream)`** — code inherited from the forked NSGA-II repository (see [Authors](#authors)). Not our work.
+- **`(upstream, modified)`** — upstream code that we edited for performance or to support Lou's modifications.
+- **`(ours)`** — written by us for this project.
+
+```
+nsga2-in-python/
+│
+├── nsga2/                  # base NSGA-II library             (upstream, modified)
+├── portfolio/              # 3-obj portfolio + Lou 2023 mods  (ours)
+├── data_pipeline/          # S&P 500 + SPY downloader         (ours)
+├── data/                   # pipeline output (parquet files)  (ours)
+│
+├── backtesting/            # walk-forward backtests vs SPY    (ours)
+├── models/                 # baseline weighting models        (ours)
+├── profile_portfolio.py    # verifies the speedup claim       (ours)
+│
+├── run_portfolio.py        # main entry point                 (ours)
+├── configs.py              # global paths/dates/tickers       (ours)
+├── setup_cython.py         # compiles portfolio Cython kernel (ours)
+└── requirements.txt
+```
+
+> **Start here:** `run_portfolio.py` → uses `portfolio/` → built on `nsga2/` → fed by `data_pipeline/` (output in `data/`).
+
+### Core
+
+`nsga2/` — base NSGA-II library (problem-agnostic). **Origin: upstream, with our modifications.** The package structure and core algorithm are inherited; we vectorized the dominance check, switched individuals to NumPy arrays, and later added a Cython sort kernel in `portfolio/cython_ops.pyx` rather than editing this package directly. Subclassed by `portfolio/`.
+- `problem.py` — `Problem` class: stores objective functions, variable count, and per-variable bounds; generates initial individuals by uniform sampling within those bounds.
+- `individual.py` — `Individual`: holds a candidate's decision vector, objective values, Pareto rank, crowding distance, and the vectorized Pareto-dominance check used by the sort.
+- `population.py` — thin container holding the list of individuals and their partition into Pareto fronts.
+- `utils.py` — `NSGA2Utils`: the genetic operators — fast non-dominated sort, crowding-distance computation, tournament selection, SBX crossover, polynomial mutation.
+- `evolution.py` — `Evolution`: drives the main loop for *N* generations (sort → crowding → tournament select → crossover + mutate → elitist truncation).
+
+`portfolio/` — portfolio problem definition and Lou's modified evolution loop.
+- `problem.py` — `PortfolioProblem` (subclasses `Problem`): defines the three objectives (Sharpe ratio, variance, diversification ratio) and enforces the simplex constraint (weights ≥ 0, sum to 1).
+- `optimizer.py` — `PortfolioNSGA2Utils` + `PortfolioEvolution`: extends the base NSGA-II with Lou's three modifications (refined selection, dynamic mutation, optimized initialization).
+- `data.py` — `load_from_pipeline()`: reads the pipeline's parquet outputs (returns, covariance, std devs) and packages them for `PortfolioProblem`.
+- `cython_ops.pyx` — Cython kernel for the fast non-dominated sort (the main per-generation hot loop). Compiled in-place by `setup_cython.py`.
+- `numba_ops.py` — Numba-JIT kernels for SBX crossover and Gaussian mutation (per-gene loops with RNG, where Numba beats NumPy).
+
+`data_pipeline/` — S&P 500 + SPY data download and processing.
+- `data_loader.py` — `SP500Pipeline`: sequential batched download of adjusted-close prices from Yahoo Finance.
+- `data_loader_threaded.py` — same pipeline, parallelized with Python threads for faster downloads.
+- `data_extractor.py` — computes daily/monthly log returns, annualized covariance matrices, asset volatilities, and pulls the SPY benchmark.
+- `tickers.json` — `SP500_TICKERS` (full constituents) and `TEST_TICKERS` (small subset for fast iteration).
+
+Top-level scripts and config:
+- `run_portfolio.py` — main entry point. Runs the optimizer in `--baseline`, `--selection`, or fully-optimized (default) mode.
+- `configs.py` — global paths, date range, batch size, default ticker list.
+- `setup_cython.py` — compiles `portfolio/cython_ops.pyx` in place.
+- `requirements.txt` — pinned dependencies.
+- `data/` — pipeline output: `raw/batch_XX.parquet` and `processed/{prices, returns, covariance, benchmark_spy}.parquet`.
+
+### Testing & validation
+
+- `profile_portfolio.py` — cProfile-based timing of each optimizer mode; used to verify the speedup claim from Lou's modifications.
+- `backtesting/` — walk-forward and sliding-window backtests of the optimized weights against SPY.
+- `models/` — baseline weighting models (e.g. price-weighted) consumed by `backtesting/` as comparison points.
 
 ---
 

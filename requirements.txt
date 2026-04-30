@@ -1,5 +1,6 @@
 beautifulsoup4==4.14.3
 certifi==2026.2.25
+Cython==3.2.4
 cffi==2.0.0
 charset-normalizer==3.4.7
 curl_cffi==0.13.0
@@ -11,6 +12,7 @@ numpy==2.4.4
 pandas==3.0.2
 peewee==4.0.4
 platformdirs==4.9.4
+pyarrow==24.0.0
 protobuf==7.34.1
 pycparser==3.0
 python-dateutil==2.9.0.post0
