@@ -83,11 +83,11 @@ def benchmark(num_runs, mode="", generations=200, population=100):
     pareto_fronts = []
     
     # Pre-warm: Run once (JIT compilation, data loading)
-    print("⏳ Pre-warming (JIT compilation, data loading)...")
+    print("Pre-warming (JIT compilation, data loading)...")
     try:
         _, _ = run_optimization_once(generations, population, use_lou_selection, use_lou_mutation, use_lou_init, silent=True)
     except Exception as e:
-        print(f"❌ Pre-warm failed: {e}")
+        print(f"Pre-warm failed: {e}")
         return None
 
     # Actual benchmark runs
@@ -101,11 +101,11 @@ def benchmark(num_runs, mode="", generations=200, population=100):
                 times.append(elapsed)
                 pareto_fronts.append(pareto_front)
             except Exception as e:
-                print(f"\n❌ Run {i+1} failed: {e}")
+                print(f"\nRun {i+1} failed: {e}")
             pbar.update(1)
 
     if not times:
-        print("❌ No successful runs!")
+        print("No successful runs!")
         return None
 
     # Calculate statistics
@@ -126,13 +126,13 @@ def benchmark(num_runs, mode="", generations=200, population=100):
     print(f"\n{'='*70}")
     print(f"RESULTS: {len(times)}/{num_runs} successful runs")
     print(f"{'='*70}")
-    print(f"Total Time:    {sum(times):.2f}s")
-    print(f'Mean:        {mean:.4f}s')
-    print(f'Median:      {median:.4f}s')
-    print(f'Std Dev:     {std:.4f}s')
-    print(f'CV:          {cv * 100:.2f}%')
-    print(f'95% CI:      [{ci_low:.4f}s, {ci_high:.4f}s]')
-    print(f'Rel. Error:  {relative_margin_error * 100:.2f}%')
+    print(f"Total Time: {sum(times):.2f}s")
+    print(f'Mean: {mean:.4f}s')
+    print(f'Median: {median:.4f}s')
+    print(f'Std Dev: {std:.4f}s')
+    print(f'CV: {cv * 100:.2f}%')
+    print(f'95% CI: [{ci_low:.4f}s, {ci_high:.4f}s]')
+    print(f'Rel. Error: {relative_margin_error * 100:.2f}%')
     print(f"{'='*70}\n")
 
     return {
@@ -151,14 +151,10 @@ def main():
     parser = argparse.ArgumentParser(
         description="Fast Portfolio Optimization Benchmark (in-process, no subprocess overhead)"
     )
-    parser.add_argument("--runs", type=int, default=10,
-                        help="Number of times to run (default: 10)")
-    parser.add_argument("--generations", type=int, default=200,
-                        help="Number of generations (default: 200)")
-    parser.add_argument("--population", type=int, default=100,
-                        help="Population size (default: 100)")
-    parser.add_argument("--compare", action="store_true",
-                        help="Compare all 3 modes")
+    parser.add_argument("--runs", type=int, default=10, help="Number of times to run (default: 10)")
+    parser.add_argument("--generations", type=int, default=200, help="Number of generations (default: 200)")
+    parser.add_argument("--population", type=int, default=100, help="Population size (default: 100)")
+    parser.add_argument("--compare", action="store_true", help="Compare all 3 modes")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--baseline", action="store_true", help="Benchmark standard NSGA-II")
     mode.add_argument("--selection", action="store_true", help="Benchmark selection optimization")
