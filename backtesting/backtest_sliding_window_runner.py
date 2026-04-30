@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Sliding-window (expanding history) backtest with quarterly re-optimization.
 
 This script implements a walk-forward / rebalancing backtest:
@@ -18,11 +16,9 @@ Outputs:
 - Writes one weights CSV per rebalance date under BACKTESTING_SLIDING_WEIGHTS_DIR.
 - Writes a single stitched results CSV under BACKTESTING_RESULTS_DIR with a
   boolean `is_refresh_day` column.
-
-This is intentionally "v1 minimal" and reuses the existing PortfolioBacktester
-for realized return/equity computation.
 """
 
+from __future__ import annotations
 from pathlib import Path
 import sys
 import csv
@@ -30,12 +26,12 @@ import csv
 import numpy as np
 import pandas as pd
 
-# Allow running as a script from repo root while still importing configs.
+# Allow running as a script from repo root while still importing configs
 _ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(_ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(_ROOT_DIR))
 
-import configs
+from configs import *
 from backtesting.backtester import PortfolioBacktester
 from portfolio.problem import PortfolioProblem
 from portfolio.optimizer import PortfolioEvolution
@@ -52,10 +48,6 @@ def _second_friday(year: int, month: int) -> pd.Timestamp:
 
 
 def _align_to_trading_day(target: pd.Timestamp, trading_days: pd.DatetimeIndex) -> pd.Timestamp | None:
-    """Align a calendar date to the next available trading day (bfill).
-
-    If target is after the last trading day, returns None.
-    """
     if len(trading_days) == 0:
         return None
 
@@ -73,7 +65,6 @@ def compute_refresh_days(
     trading_days: pd.DatetimeIndex,
     months: tuple[int, ...],
 ) -> list[pd.Timestamp]:
-    """Compute rebalance/refresh trading days within [start_date, end_date]."""
     start = pd.Timestamp(start_date).normalize()
     end = pd.Timestamp(end_date).normalize()
 
@@ -94,7 +85,6 @@ def compute_refresh_days(
 
 
 def _previous_trading_day(target: pd.Timestamp, trading_days: pd.DatetimeIndex) -> pd.Timestamp | None:
-    """Return the previous trading day strictly before `target`, or None."""
     if len(trading_days) == 0:
         return None
     target = pd.Timestamp(target).normalize()
@@ -105,18 +95,11 @@ def _previous_trading_day(target: pd.Timestamp, trading_days: pd.DatetimeIndex) 
 
 
 def _optimizer_inputs_from_returns(returns_df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
-    """Convert a returns DataFrame (daily log returns) into optimizer inputs.
-
-    Matches the intent of portfolio/data.py, but for an arbitrary time window.
-    We drop tickers with missing returns in this training window.
-    """
     if returns_df.empty:
         raise ValueError("Training returns window is empty")
 
     # Drop tickers with any missing values in the training window.
     clean = returns_df.dropna(axis=1, how="any")
-    if clean.shape[1] == 0:
-        raise ValueError("No tickers remain after dropping NaNs in the training window")
 
     mean_returns = clean.mean().to_numpy(dtype=float)
     cov_matrix = clean.cov().to_numpy(dtype=float)
@@ -126,30 +109,24 @@ def _optimizer_inputs_from_returns(returns_df: pd.DataFrame) -> tuple[np.ndarray
 
 
 def _optimize_weights_from_history(returns_history: pd.DataFrame) -> pd.DataFrame:
-    """Run the optimizer on a historical returns window and return a weights DataFrame."""
     mean_returns, cov_matrix, std_returns, tickers = _optimizer_inputs_from_returns(returns_history)
 
     problem = PortfolioProblem(mean_returns, cov_matrix, std_returns)
     evolution = PortfolioEvolution(
         problem,
-        num_of_generations=int(getattr(configs, "SLIDING_OPT_GENERATIONS", 200)),
-        num_of_individuals=int(getattr(configs, "SLIDING_OPT_POPULATION", 100)),
-        use_lou_selection=bool(getattr(configs, "SLIDING_USE_LOU_SELECTION", True)),
-        use_lou_mutation=bool(getattr(configs, "SLIDING_USE_LOU_MUTATION", True)),
-        use_lou_init=bool(getattr(configs, "SLIDING_USE_LOU_INIT", True)),
+        num_of_generations=SLIDING_OPT_GENERATIONS,
+        num_of_individuals=SLIDING_OPT_POPULATION,
+        use_lou_selection=SLIDING_USE_LOU_SELECTION,
+        use_lou_mutation=SLIDING_USE_LOU_MUTATION,
+        use_lou_init=SLIDING_USE_LOU_INIT,
     )
 
     pareto_front = evolution.evolve()
-    if len(pareto_front) == 0:
-        raise ValueError("Optimizer returned an empty Pareto front")
 
     # Best Sharpe portfolio corresponds to minimal objective[0] (neg_sharpe)
     best_idx = min(range(len(pareto_front)), key=lambda i: pareto_front[i].objectives[0])
     best = pareto_front[best_idx]
-
     weights = np.asarray(best.features, dtype=float).reshape(-1)
-    if len(weights) != len(tickers):
-        raise ValueError("Optimizer produced weights with unexpected length")
 
     return pd.DataFrame({"ticker": tickers, "weight": weights})
 
@@ -166,65 +143,92 @@ def _write_weights_csv(weights_df: pd.DataFrame, path: Path) -> None:
 
 
 def main() -> None:
-    proc = Path(configs.PROC_DIR)
-
-    returns_path = proc / configs.RETURNS_DAILY_FILENAME
-    spy_path = proc / configs.BENCHMARK_SPY_FILENAME
-
-    overall_start = str(configs.BACKTEST_START_DATE)
-    overall_end = str(configs.BACKTEST_END_DATE)
+    overall_start = str(BACKTEST_START_DATE)
+    overall_end = str(BACKTEST_END_DATE)
 
     # Load once (we will slice repeatedly for training/holding segments).
-    returns_df = pd.read_parquet(returns_path)
+    returns_df = pd.read_parquet(BACKTEST_RETURNS_PATH)
     returns_df.index = pd.to_datetime(returns_df.index)
     returns_df.sort_index(inplace=True)
 
-    spy_df = pd.read_parquet(spy_path)
+    spy_df = pd.read_parquet(BACKTEST_SPY_PRICES_PATH)
     spy_df.index = pd.to_datetime(spy_df.index)
     spy_df.sort_index(inplace=True)
     if "SPY" not in spy_df.columns:
         raise ValueError("benchmark_spy.parquet must contain a 'SPY' column")
     spy_close = spy_df.loc[:, ["SPY"]].astype(float).squeeze("columns")
 
-    # Align to common trading days once.
+    # Align to common trading days once (full history).
     common_days = returns_df.index.intersection(spy_close.index)
     if len(common_days) == 0:
         raise ValueError("No overlapping dates between returns and SPY benchmark")
-    returns_df = returns_df.loc[common_days]
-    spy_close = spy_close.loc[common_days]
+    returns_all = returns_df.loc[common_days]
+    spy_all = spy_close.loc[common_days]
 
-    # Slice to the overall backtest window.
+    # Slice to the overall backtest window for evaluation.
     start_ts = pd.Timestamp(overall_start)
     end_ts = pd.Timestamp(overall_end)
-    mask = (returns_df.index >= start_ts) & (returns_df.index <= end_ts)
-    returns_df = returns_df.loc[mask]
-    spy_close = spy_close.loc[mask]
-    trading_days = returns_df.index
+    mask = (returns_all.index >= start_ts) & (returns_all.index <= end_ts)
+    returns_bt = returns_all.loc[mask]
+    spy_bt = spy_all.loc[mask]
+    trading_days_bt = returns_bt.index
+    trading_days_all = returns_all.index
 
-    if len(trading_days) < 2:
+    if len(trading_days_bt) < 2:
         raise ValueError("Backtest window too small after filtering")
 
     refresh_days = compute_refresh_days(
         start_date=overall_start,
         end_date=overall_end,
-        trading_days=trading_days,
-        months=tuple(getattr(configs, "SLIDING_REBALANCE_MONTHS", (3, 6, 9, 12))),
+        trading_days=trading_days_bt,
+        months=tuple(SLIDING_REBALANCE_MONTHS),
     )
     if len(refresh_days) == 0:
         raise ValueError("No refresh days found within the configured backtest window")
 
     # Enforce a no-look-ahead convention: compute weights using data up to the prior trading day.
-    min_train_days = int(getattr(configs, "SLIDING_MIN_TRAIN_DAYS", 60))
+    min_train_days = int(SLIDING_MIN_TRAIN_DAYS)
 
-    weights_dir = Path(getattr(configs, "BACKTESTING_SLIDING_WEIGHTS_DIR", Path(configs.BACKTESTING_WEIGHTS_DIR)))
+    weights_dir = Path(BACKTESTING_SLIDING_WEIGHTS_DIR)
 
     # Results output path
-    results_dir = Path(configs.BACKTESTING_RESULTS_DIR)
-    results_dir.mkdir(parents=True, exist_ok=True)
-    results_path = results_dir / getattr(configs, "BACKTESTING_SLIDING_RESULTS_FILENAME", "sliding_window_lou_vs_spy.csv")
+    BACKTESTING_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    results_path = Path(BACKTEST_SLIDING_RESULTS_CSV_PATH)
 
     segments: list[pd.DataFrame] = []
-    current_equity = float(getattr(configs, "BACKTEST_INITIAL_EQUITY", 1.0))
+    current_equity_port = float(BACKTEST_INITIAL_EQUITY)
+    current_equity_spy = float(BACKTEST_INITIAL_EQUITY)
+
+    # Optional initial segment: hold from BACKTEST_START_DATE until the day before
+    # the first rebalance day, using weights trained on all data up to the prior trading day.
+    first_rebalance = refresh_days[0]
+    initial_hold_start = pd.Timestamp(overall_start).normalize()
+    initial_hold_end = (pd.Timestamp(first_rebalance).normalize() - pd.Timedelta(days=1)).normalize()
+    initial_hold_end = min(initial_hold_end, pd.Timestamp(overall_end).normalize())
+
+    if initial_hold_start <= initial_hold_end:
+        train_end0 = _previous_trading_day(initial_hold_start, trading_days_all)
+        if train_end0 is not None:
+            returns_train0 = returns_all.loc[:train_end0]
+            if len(returns_train0) >= int(SLIDING_MIN_TRAIN_DAYS):
+                weights_df0 = _optimize_weights_from_history(returns_train0)
+                weights_path0 = Path(BACKTESTING_SLIDING_WEIGHTS_DIR) / f"weights_{initial_hold_start.date()}.csv"
+                _write_weights_csv(weights_df0, weights_path0)
+
+                bt0 = PortfolioBacktester(
+                    start_date=str(initial_hold_start.date()),
+                    end_date=str(initial_hold_end.date()),
+                    initial_equity=current_equity_port,
+                    spy_initial_equity=current_equity_spy,
+                    trading_days_per_year=int(TRADING_DAYS_PER_YEAR),
+                    returns_df=returns_bt,
+                    spy_close=spy_bt,
+                    weights_df=weights_df0,
+                )
+                seg0, _ = bt0.run()
+                segments.append(seg0)
+                current_equity_port = float(seg0["portfolio_equity"].iloc[-1])
+                current_equity_spy = float(seg0["spy_equity"].iloc[-1])
 
     for i, rebalance_day in enumerate(refresh_days):
         hold_start = rebalance_day
@@ -240,12 +244,12 @@ def main() -> None:
         if hold_start.normalize() > hold_end:
             continue
 
-        train_end = _previous_trading_day(hold_start, trading_days)
+        train_end = _previous_trading_day(hold_start, trading_days_all)
         if train_end is None:
             # No prior data to train on.
             continue
 
-        returns_train = returns_df.loc[pd.Timestamp(overall_start) : train_end]
+        returns_train = returns_all.loc[:train_end]
         if len(returns_train) < min_train_days:
             # Skip early quarters until we have enough data.
             continue
@@ -261,16 +265,18 @@ def main() -> None:
         bt = PortfolioBacktester(
             start_date=str(hold_start.date()),
             end_date=str(hold_end.date()),
-            initial_equity=current_equity,
-            trading_days_per_year=getattr(configs, "TRADING_DAYS_PER_YEAR", 252),
-            returns_df=returns_df,
-            spy_close=spy_close,
+            initial_equity=current_equity_port,
+            spy_initial_equity=current_equity_spy,
+            trading_days_per_year=int(TRADING_DAYS_PER_YEAR),
+            returns_df=returns_bt,
+            spy_close=spy_bt,
             weights_df=weights_df,
         )
 
         seg_df, _ = bt.run()
         segments.append(seg_df)
-        current_equity = float(seg_df["portfolio_equity"].iloc[-1])
+        current_equity_port = float(seg_df["portfolio_equity"].iloc[-1])
+        current_equity_spy = float(seg_df["spy_equity"].iloc[-1])
 
     if len(segments) == 0:
         raise ValueError(

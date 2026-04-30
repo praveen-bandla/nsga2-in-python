@@ -42,8 +42,8 @@ class PortfolioBacktester:
         start_date: str,
         end_date: str,
         initial_equity: float = 1.0,
+        spy_initial_equity: float | None = None,
         trading_days_per_year: int = 252,
-        # Optional in-memory inputs (useful for sliding-window runners)
         returns_df: pd.DataFrame | None = None,
         spy_close: pd.Series | None = None,
         weights_df: pd.DataFrame | None = None,
@@ -54,6 +54,7 @@ class PortfolioBacktester:
         self.start_date = str(start_date)
         self.end_date = str(end_date)
         self.initial_equity = float(initial_equity)
+        self.spy_initial_equity = float(self.initial_equity if spy_initial_equity is None else spy_initial_equity)
         self.trading_days_per_year = int(trading_days_per_year)
 
         self._returns_df = returns_df
@@ -80,9 +81,9 @@ class PortfolioBacktester:
         port_r = self._portfolio_simple_returns(returns_df, w)
         spy_r = self._spy_simple_returns(spy_close)
 
-        # 6) Equity curves (starting from initial_equity)
-        port_equity = self._equity_curve(port_r)
-        spy_equity = self._equity_curve(spy_r)
+        # 6) Equity curves
+        port_equity = self._equity_curve(port_r, initial_equity=self.initial_equity)
+        spy_equity = self._equity_curve(spy_r, initial_equity=self.spy_initial_equity)
 
         out = pd.DataFrame(
             {
@@ -101,8 +102,6 @@ class PortfolioBacktester:
     def _load_weights(self) -> pd.DataFrame:
         """Load the frozen weight vector from CSV."""
         weights_df = pd.read_csv(self.weights_csv_path)
-        if not {"ticker", "weight"}.issubset(weights_df.columns):
-            raise ValueError("Weights CSV must have columns: ticker, weight")
         return weights_df
 
     def _load_returns(self) -> pd.DataFrame:
@@ -170,16 +169,16 @@ class PortfolioBacktester:
     def _portfolio_simple_returns(self, returns_df: pd.DataFrame, w: np.ndarray) -> np.ndarray:
         """Convert asset log returns -> simple returns, then compute portfolio return series."""
         log_r = returns_df.to_numpy(dtype=float)
-        simple_r = np.expm1(log_r)  # exp(log_r) - 1
+        simple_r = np.expm1(log_r)
         return (simple_r @ w).reshape(-1)
 
     def _spy_simple_returns(self, spy_close: pd.Series) -> np.ndarray:
         """Compute SPY simple returns from close prices."""
         return spy_close.pct_change().fillna(0.0).to_numpy(dtype=float).reshape(-1)
 
-    def _equity_curve(self, r: np.ndarray) -> np.ndarray:
-        """Build an equity curve from returns, starting at initial_equity."""
-        return self.initial_equity * np.cumprod(1.0 + r)
+    def _equity_curve(self, r: np.ndarray, *, initial_equity: float) -> np.ndarray:
+        """Build an equity curve from returns, starting at the provided initial equity."""
+        return float(initial_equity) * np.cumprod(1.0 + r)
 
     def _summarize(self, df: pd.DataFrame, *, n_assets: int) -> BacktestSummary:
         n_days = int(len(df))
@@ -188,9 +187,9 @@ class PortfolioBacktester:
         port_equity_end = float(df["portfolio_equity"].iloc[-1])
         spy_equity_end = float(df["spy_equity"].iloc[-1])
 
-        # Use returns relative to initial_equity so metrics remain correct when initial_equity != 1.
+        # Use returns relative to the configured initial equities.
         port_growth = port_equity_end / self.initial_equity
-        spy_growth = spy_equity_end / self.initial_equity
+        spy_growth = spy_equity_end / self.spy_initial_equity
 
         total_ret_port = port_growth - 1.0
         total_ret_spy = spy_growth - 1.0

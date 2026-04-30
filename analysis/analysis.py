@@ -3,6 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import sys
+import textwrap
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+	sys.path.insert(0, str(REPO_ROOT))
+
+from configs import *
 
 import pandas as pd
 
@@ -24,8 +31,6 @@ class SeriesSummary:
 
 def _find_latest_csv(results_dir: Path) -> Path:
 	csv_paths = sorted(results_dir.glob("*.csv"))
-	if not csv_paths:
-		raise FileNotFoundError(f"No .csv files found in {results_dir}")
 	return max(csv_paths, key=lambda p: p.stat().st_mtime)
 
 
@@ -36,17 +41,7 @@ def _compute_summary(
 	return_col: str,
 	initial_equity: float,
 ) -> SeriesSummary:
-	if "date" not in df.columns:
-		raise ValueError("Expected a 'date' column in results CSV")
-	if equity_col not in df.columns:
-		raise ValueError(f"Missing expected equity column: {equity_col}")
-	if return_col not in df.columns:
-		raise ValueError(f"Missing expected return column: {return_col}")
-
 	df = df[["date", equity_col, return_col]].dropna().copy()
-	if df.empty:
-		raise ValueError("No non-null rows available to analyze")
-
 	df = df.sort_values("date")
 
 	start_date = str(df["date"].iloc[0])
@@ -86,34 +81,28 @@ def _compute_summary(
 
 
 def _print_summary(name: str, s: SeriesSummary) -> None:
-	text = (
-		f"{name}\n"
-		f"  Period: {s.start_date} -> {s.end_date} ({s.n_rows:,} rows)\n"
-		f"  Start equity: {s.start_equity:,.2f}\n"
-		f"  End equity:   {s.end_equity:,.2f}\n"
-		f"  Net change:   {s.net_change:,.2f}\n"
-		f"  Net return:   {s.net_return * 100:,.2f}%\n"
-		f"  Total gain:   {s.total_gain:,.2f}\n"
-		f"  Total loss:   {s.total_loss:,.2f}\n"
-		f"  Max high:     {s.max_high:,.2f}\n"
-		f"  Max low:      {s.max_low:,.2f}"
-	)
+	text = textwrap.dedent(
+		f"""\
+		{name}
+		  Period: {s.start_date} -> {s.end_date} ({s.n_rows:,} rows)
+		  Start equity: {s.start_equity:,.2f}
+		  End equity: {s.end_equity:,.2f}
+		  Net change: {s.net_change:,.2f}
+		  Net return: {s.net_return * 100:,.2f}%
+		  Total gain: {s.total_gain:,.2f}
+		  Total loss: {s.total_loss:,.2f}
+		  Max high: {s.max_high:,.2f}
+		  Max low: {s.max_low:,.2f}
+		"""
+	).rstrip()
 	print(text)
 
 
 def main() -> None:
-	repo_root = Path(__file__).resolve().parents[1]
+	repo_root = REPO_ROOT
 
-	if str(repo_root) not in sys.path:
-		sys.path.insert(0, str(repo_root))
-
-	try:
-		import configs  # type: ignore
-	except Exception as e:  # pragma: no cover
-		raise RuntimeError(f"Failed to import configs.py from repo root: {repo_root}") from e
-
-	initial_equity = float(getattr(configs, "BACKTEST_INITIAL_EQUITY", 1000.0))
-	results_dir = Path(getattr(configs, "BACKTESTING_RESULTS_DIR", repo_root / "backtesting" / "results"))
+	initial_equity = BACKTEST_INITIAL_EQUITY
+	results_dir = BACKTESTING_RESULTS_DIR
 
 	latest_csv = _find_latest_csv(results_dir)
 	df = pd.read_csv(latest_csv)
