@@ -392,6 +392,32 @@ To understand the impact of Lou's modifications, compare outputs from:
 
 The fully optimized version should converge faster and produce more diverse, higher-quality Pareto fronts.
 
+### Backtesting (Sliding Window) + Equity Curve
+
+To run the walk-forward (quarterly) **sliding-window** backtest vs SPY (expanding history, re-optimizes weights each refresh date):
+
+```bash
+./venv/bin/python backtesting/backtest_sliding_window_runner.py
+```
+
+Default outputs:
+- Stitched backtest CSV: `backtesting/results/sliding_window_lou_vs_spy.csv`
+- One weights CSV per rebalance date: `backtesting/weights/sliding_window/weights_YYYY-MM-DD.csv`
+
+To print a quick summary for the latest CSV in `backtesting/results/`:
+
+```bash
+./venv/bin/python analysis/analysis.py
+```
+
+To generate an equity curve image (Portfolio vs SPY):
+
+```bash
+./venv/bin/python analysis/plot_equity_curve.py
+```
+
+This saves `analysis/equity_curve_portfolio_vs_spy.png` by default.
+
 ---
 
 ## Authors
