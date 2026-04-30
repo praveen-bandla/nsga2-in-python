@@ -16,9 +16,6 @@ Outputs:
 - Writes one weights CSV per rebalance date under BACKTESTING_SLIDING_WEIGHTS_DIR.
 - Writes a single stitched results CSV under BACKTESTING_RESULTS_DIR with a
   boolean `is_refresh_day` column.
-
-This is intentionally "v1 minimal" and reuses the existing PortfolioBacktester
-for realized return/equity computation.
 """
 
 from __future__ import annotations
